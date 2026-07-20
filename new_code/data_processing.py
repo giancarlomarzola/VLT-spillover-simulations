@@ -98,7 +98,7 @@ def process_data(df, token_name, resample_freq=None):
         df = df.resample(resample_freq, closed="right", label="right").last()
 
     return df.reset_index(drop=False).rename(
-        columns=lambda x: f"{token_name}_{x}" if x != "timestamp" else x
+        columns=lambda x: f"{token_name}{x}" if x != "timestamp" else x
     )
 
 
@@ -181,9 +181,9 @@ def create_currency_df(currency, resample_freq=None, include_rebalance=True):
     )
 
     # Clean and resample data
-    token_up = process_data(token_up, f"{currency}_up", resample_freq)
-    token_down = process_data(token_down, f"{currency}_down", resample_freq)
-    token = process_data(token, currency, resample_freq)
+    token_up = process_data(token_up, "up_", resample_freq)
+    token_down = process_data(token_down, "down_", resample_freq)
+    token = process_data(token, "", resample_freq)
 
     # Merge all dataframes on timestamp using nearest-match merge
     token_merged = token_up
@@ -210,6 +210,7 @@ if __name__ == "__main__":
         print(f"Data shape: {data.shape}")
         print(f"Columns: {list(data.columns)}")
         display(data.head())
+
         data.to_csv(f"{output_folder}/{currency}_data.csv", index=False)
         print(f"Saved to {output_folder}/{currency}_data.csv")
 
@@ -221,6 +222,7 @@ if __name__ == "__main__":
         print(f"Data shape: {data_1m.shape}")
         print(f"Columns: {list(data_1m.columns)}")
         display(data_1m.head())
+
         data_1m.to_csv(f"{output_folder}/{currency}_data_1m.csv", index=False)
         print(f"Saved to {output_folder}/{currency}_data_1m.csv")
 
