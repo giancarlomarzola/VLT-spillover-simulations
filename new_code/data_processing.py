@@ -146,6 +146,7 @@ def add_rebalance_data(token_merged, currency):
             left_on="timestamp",
             right_on="Time",
         ).rename(columns={"BasketAfter": "BasketUP", "TokensAfter": "nTokensUP"})
+        token_merged = token_merged.drop(columns=["Time"])
 
         token_merged = pd.merge_asof(
             token_merged,
@@ -153,6 +154,24 @@ def add_rebalance_data(token_merged, currency):
             left_on="timestamp",
             right_on="Time",
         ).rename(columns={"BasketAfter": "BasketDOWN", "TokensAfter": "nTokensDOWN"})
+        token_merged = token_merged.drop(columns=["Time"])
+
+        # Add leverage data
+        token_merged = pd.merge_asof(
+            token_merged,
+            up_rebalance[["Time", "LeverageAfter"]],
+            left_on="timestamp",
+            right_on="Time",
+        ).rename(columns={"LeverageAfter": "leverageUP"})
+        token_merged = token_merged.drop(columns=["Time"])
+
+        token_merged = pd.merge_asof(
+            token_merged,
+            down_rebalance[["Time", "LeverageAfter"]],
+            left_on="timestamp",
+            right_on="Time",
+        ).rename(columns={"LeverageAfter": "leverageDOWN"})
+        token_merged = token_merged.drop(columns=["Time"])
 
         return token_merged
 
@@ -203,27 +222,26 @@ if __name__ == "__main__":
     output_folder = "dissertation_data/token_dataframes"
     os.makedirs(output_folder, exist_ok=True)
 
-    for currency in ["sushi", "btc"]:
-        # Load and process data without resampling
-        print(f"Loading {currency.upper()} token data without resampling...")
-        data = create_currency_df(currency)
-        print(f"Data shape: {data.shape}")
-        print(f"Columns: {list(data.columns)}")
-        display(data.head())
+    # Specify currencies and frequencies to process
+    currencies = ["sushi", "btc"]
+    frequencies = [None, "1s", "1min"]
 
-        data.to_csv(f"{output_folder}/{currency}_data.csv", index=False)
-        print(f"Saved to {output_folder}/{currency}_data.csv")
+    for currency in currencies:
+        for freq in frequencies:
+            freq_label = "no_resample" if freq is None else freq
+            print(f"Loading {currency.upper()} token data with {freq_label} resampling...")
 
-        print("\n" + "=" * 50)
+            data = create_currency_df(currency, resample_freq=freq)
+            print(f"Data shape: {data.shape}")
+            print(f"Columns: {list(data.columns)}")
+            display(data.head())
 
-        # Load and process data with 1-minute resampling
-        print(f"Loading {currency.upper()} token data with 1-minute resampling...")
-        data_1m = create_currency_df(currency, resample_freq="1min")
-        print(f"Data shape: {data_1m.shape}")
-        print(f"Columns: {list(data_1m.columns)}")
-        display(data_1m.head())
+            # Save with appropriate filename
+            if freq is None:
+                filename = f"{output_folder}/{currency}_data.csv"
+            else:
+                filename = f"{output_folder}/{currency}_data_{freq}.csv"
 
-        data_1m.to_csv(f"{output_folder}/{currency}_data_1m.csv", index=False)
-        print(f"Saved to {output_folder}/{currency}_data_1m.csv")
-
-        print("\n" + "=" * 50)
+            data.to_csv(filename, index=False)
+            print(f"Saved to {filename}")
+            print("\n" + "=" * 50)
