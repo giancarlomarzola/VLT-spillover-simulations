@@ -1,11 +1,13 @@
 [project]
-name = "vlt_paper"
+name = "vlt-simulations"
 version = "0.1.0"
-description = "Virtual environment for VLT spill-over effect simulation using synthetic orderbooks"
+description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "datetime>=6.0",
     "ipykernel>=7.3.0",
+    "jupyter>=1.1.1",
     "matplotlib>=3.11.1",
     "numpy>=2.5.1",
     "pandas>=3.0.3",

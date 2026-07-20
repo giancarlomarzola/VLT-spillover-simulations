@@ -21,8 +21,8 @@ from matplotlib.dates import MinuteLocator # HourLocator, MonthLocator, YearLoca
 
 
 # PC filepath
-filepath = "C:/Users/gianc/OneDrive/Uni/Sussex MSc/Dissertation/Code/dissertation-data"
-plot_path = "C:/Users/gianc/OneDrive/Uni/Sussex/Dissertation/Plots"
+filepath = "dissertation_data"
+plot_path = "figures"
 
 #Laptop filepath
 #filepath = "C:/Users/Giancarlo/OneDrive/Uni/Sussex/Dissertation/Code/dissertation-data"
