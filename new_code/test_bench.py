@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 
 # Parameters
 currency = "btc"
-frequency = "30s"
+frequency = "15s"
 
 lambda_target = None  # None = boundary rebalancing, float = target rebalancing
 lambda_up = 4  # upper boundary
@@ -22,7 +22,7 @@ orderbooks = {
 }
 
 # Display options
-show_hover_info = True
+show_hover_info = False
 
 
 
@@ -112,4 +112,3 @@ if __name__ == "__main__":
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
 
     fig.show()
-
