@@ -189,7 +189,7 @@ with st.sidebar:
     # Strategy toggle
     rebalancing_mode = st.radio(
         "Strategy",
-        ["Boundary", "Target"],
+        ["Nearest Boundary", "Target Leverage"],
         index=1 if default_lambda_target else 0,
         horizontal=True,
         label_visibility="collapsed",
