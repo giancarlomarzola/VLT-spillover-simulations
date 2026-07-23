@@ -3,17 +3,19 @@ import json
 import uuid
 from pathlib import Path
 
+# Add project root to path before importing local modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import pandas as pd
+import streamlit as st
+import plotly.graph_objects as go
+from new_code.price_spillover_simulations import run_simulation
+
 """
-TO RUN THE DASHBOARD USE THIS COMMAND IN TERMINAL: 
+TO RUN THE DASHBOARD USE THIS COMMAND IN TERMINAL:
 streamlit run new_code/dashboard.py
 """
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-import streamlit as st
-import plotly.graph_objects as go
-from new_code.price_spillover_simulations import import_data, run_simulation
 
 # Persistence setup
 CONFIG_DIR = Path(__file__).parent.parent / ".dashboard_config"
@@ -103,11 +105,14 @@ with st.sidebar:
         horizontal=True,
         index=0 if default_currency == "btc" else 1
     )
+
+    available_frequencies = ["Tick", "1s", "15s", "30s", "1min"]
+    default_freq_index = available_frequencies.index(default_frequency) if default_frequency in available_frequencies else available_frequencies.index("30s")
     frequency = st.radio(
         "Frequency",
-        ["15s", "30s", "1min"],
+        available_frequencies,
         horizontal=True,
-        index=["15s", "30s", "1min"].index(default_frequency)
+        index=default_freq_index
     )
     show_hover = st.checkbox("Show hover info", value=False)
 
@@ -320,8 +325,15 @@ else:
     if st.button("Run Simulation", type="primary"):
         with st.spinner("Running simulation..."):
             try:
-                # Import data
-                binance_data = import_data(currency, frequency)
+                # Load pre-processed data
+                if frequency == "Tick":
+                    filepath = f"dissertation_data/token_dataframes/{currency}_tick_processed.parquet"
+                else:
+                    filepath = f"dissertation_data/token_dataframes/{currency}_{frequency}_processed.parquet"
+
+                binance_data = pd.read_parquet(filepath)
+                binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)
+
                 results = {}
 
                 # Run simulations
@@ -348,11 +360,11 @@ else:
                         st.write(f"**{orderbook_name}** → Depth: {depth_display}, Width: {width_display}, Spread: {spread_display}")
 
                     result = run_simulation(
-                        binance_data,
                         lambda_target=lambda_value,
                         lambda_up=lambda_up,
                         lambda_down=lambda_down,
-                        orderbook=orderbook
+                        orderbook=orderbook,
+                        data=binance_data
                     )
                     results[orderbook_name] = result
 
@@ -415,5 +427,11 @@ else:
 
                 st.success("Simulation completed!")
 
+            except FileNotFoundError:
+                st.error(
+                    f"Pre-processed data not found for {currency.upper()} at {frequency} frequency.\n\n"
+                    f"Available frequencies: Tick, 15s, 30s, 1min\n\n"
+                    f"Please run `python new_code/data_processing.py` to prepare the data."
+                )
             except Exception as e:
                 st.error(f"Error running simulation: {str(e)}")

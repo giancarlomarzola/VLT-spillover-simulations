@@ -1,32 +1,6 @@
 import pandas as pd
 import numpy as np
 
-currency = "btc"
-frequency = "30s"
-
-# Parameters (same for up and down)
-lambda_target = None  # None = boundary rebalancing, float = target rebalancing
-lambda_up = 4  # upper boundary
-lambda_down = 1.25  # lower boundary
-# lambda_0     = 3.5 # Leverage at start
-
-
-def import_data(currency, frequency):
-    # import dataframe
-    filename = f"{currency}_data" + (f"_{frequency}" if frequency else "")
-    df = pd.read_csv(f"dissertation_data/token_dataframes/{filename}.csv")
-
-
-    # Ensure timestamp is datetime format
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
-
-    # Filter to analysis period
-    analysis_start = pd.Timestamp("2021-05-19 12:00:00")
-    analysis_end = pd.Timestamp("2021-05-19 14:00:00")
-
-    df = df[df["timestamp"].between(analysis_start, analysis_end)].reset_index(drop=True)
-    return df
-
 
 # (internal_key, output_column_suffix) — order matches the original schema
 _TOKEN_VARS = [
@@ -84,10 +58,14 @@ def _slippage(d, depth, spread, width):
 def _step_token(prev, omega, ret, lambda_target, lambda_up, lambda_down):
     """Advance one token (UP or DOWN) by one time step."""
     v = prev["v"] * (1 + omega * prev["lam_star"] * ret)
-    if v <= 0:
-        return dict.fromkeys(("v", "x", "x_star", "lam", "lam_star", "target_delta", "actual_delta"), 0.0)
-
     x = prev["x_star"] * (1 + ret)
+
+    if v <= 0:
+        # Wipeout: liquidate remaining position (eqn 14 applies here too)
+        liquidation_delta = -x
+        return {"v": 0.0, "x": 0.0, "x_star": 0.0, "lam": 0.0, "lam_star": 0.0,
+                "target_delta": liquidation_delta, "actual_delta": liquidation_delta}
+
     lam = omega * x / v
 
     if lambda_down <= lam <= lambda_up:
@@ -99,24 +77,29 @@ def _step_token(prev, omega, ret, lambda_target, lambda_up, lambda_down):
         x_star = omega * v * lambda_target
 
     lam_star = omega * x_star / v
-    target_delta = x_star - x  # in $
+    target_delta = x_star - x  # target rebalance size, in $
 
+    # actual_delta will be determined by execution cap in run_simulation
     return {"v": v, "x": x, "x_star": x_star, "lam": lam, "lam_star": lam_star,
             "target_delta": target_delta, "actual_delta": target_delta}
 
 
 def run_simulation(
-    df, # cleaned binance data df
     lambda_target, # None = boundary rebalancing, float = target rebalancing
     lambda_up, # upper boundary
     lambda_down, # lower boundary
     orderbook=None,
+    data=None,
+    currency=None,
+    frequency=None,
     ):
     """
     Simulate a pair of variable-leverage UP/DOWN tokens through time.
 
     lambda_target: None uses boundary rebalancing (snap to upper/lower bound),
     any float uses target rebalancing (rebalance to that target leverage).
+    lambda_up: upper boundary
+    lambda_down: lower boundary
 
     orderbook: dict with keys "depth", "spread", "width", each a scalar
     (symmetric book) or a (bid, ask) pair (asymmetric book), in the units
@@ -124,17 +107,32 @@ def run_simulation(
     no price impact. Slippage and the price multiplier follow the
     one-period execution lag of eqn 5: a rebalance at t only moves the
     price used at t+1.
+
+    data: optional pre-loaded DataFrame. If provided, uses this directly.
+    Otherwise requires currency and frequency to load pre-processed data.
+
+    currency: ticker (e.g., "btc"). Required if data is None.
+    frequency: sampling frequency (e.g., "30s", "1min"). Required if data is None.
     """
 
-    # Get initial 
-    price = np.asarray(df["price"].values, dtype=float)
+    if data is None:
+        if currency is None or frequency is None:
+            raise ValueError("Must provide either 'data' or both 'currency' and 'frequency'")
 
-    # UP parameters
-    up_investment = df["nTokensUP"].iloc[0] * df["up_price"].iloc[0]
-    up_lambda_0 = df["leverageUP"].iloc[0]
-    # DOWN Parameters
-    down_investment = df["nTokensDOWN"].iloc[0] * df["down_price"].iloc[0]
-    down_lambda_0 = df["leverageDOWN"].iloc[0]
+        filepath = f"dissertation_data/token_dataframes/{currency}_{frequency}_processed.parquet"
+        try:
+            df = pd.read_parquet(filepath)
+            df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Pre-processed data not found: {filepath}\n"
+                f"Run data_processing.py to prepare {currency} data at {frequency} frequency."
+            )
+    else:
+        df = data
+
+    # Get initial
+    price = np.asarray(df["price"].values, dtype=float)
 
     n = len(price)
     out = np.zeros((n, len(COLUMNS)))
@@ -147,16 +145,29 @@ def run_simulation(
         spread = (spread_pair[0] / 100, spread_pair[1] / 100)
         width = (width_pair[0] / 100, width_pair[1] / 100)
 
-    # t = 0
+    # t = 0: Seed from basket primitives
     for side, omega in _SIDES:
-        investment = up_investment if side == "up" else down_investment
-        lam_0 = up_lambda_0 if side == "up" else down_lambda_0
-        x0 = omega * investment * lam_0
-        out[0, COL[f"v_{side}"]] = investment
-        out[0, COL[f"x_{side}"]] = x0
-        out[0, COL[f"xst_{side}"]] = x0
-        out[0, COL[f"lambda_{side}"]] = omega * x0 / investment
-        out[0, COL[f"lambdast_{side}"]] = omega * x0 / investment
+        if side == "up":
+            v0 = df["nTokensUP"].iloc[0] * df["up_price"].iloc[0]   # investment in basket currency
+            x_star_0 = df["BasketUP"].iloc[0] * df["price"].iloc[0]  # already signed
+        else:
+            v0 = df["nTokensDOWN"].iloc[0] * df["down_price"].iloc[0]
+            x_star_0 = df["BasketDOWN"].iloc[0] * df["price"].iloc[0]  # already signed
+
+        # Compute initial leverage from basket
+        lam_0_star = omega * x_star_0 / v0 if v0 > 0 else 0.0
+
+        # Apply initial leverage bounds check (eqn 13): if lam_0* outside [lambda_down, lambda_up], reset to bound
+        if lam_0_star < lambda_down:
+            lam_0_star = lambda_down
+        elif lam_0_star > lambda_up:
+            lam_0_star = lambda_up
+
+        out[0, COL[f"v_{side}"]] = v0
+        out[0, COL[f"x_{side}"]] = x_star_0
+        out[0, COL[f"xst_{side}"]] = x_star_0
+        out[0, COL[f"lambda_{side}"]] = lam_0_star
+        out[0, COL[f"lambdast_{side}"]] = lam_0_star
     out[0, COL["price_multiplier"]] = 1.0
 
     m_lag = 1.0  # m_{-1}, needed for the eqn 5 lag at t = 1
@@ -177,12 +188,34 @@ def run_simulation(
             step_results[side] = res
             target_total += res["target_delta"]
 
+        # Execution cap: if net trade exceeds available depth on either side, scale both sides (eqn 14)
         if has_orderbook and target_total != 0:
-            d_t = target_total / (price[t] * m_prev)  # trade size, in tokens
-            depth_tokens = (depth[0] / (price[t] * m_prev), depth[1] / (price[t] * m_prev))  # convert USD to tokens
-            s_t = _slippage(d_t, depth_tokens, spread, width)
+            d_target = target_total / (price[t] * m_prev)  # trade size, in tokens
+            # Convert USD depth to tokens (the conversion and reconversion cancel exactly)
+            depth_tokens = (depth[0] / (price[t] * m_prev), depth[1] / (price[t] * m_prev))
+            D_side = depth_tokens[1] if d_target > 0 else depth_tokens[0]
+
+            if abs(d_target) > D_side:
+                # Execution capped: scale both sides proportionally, price moves by full width (eqn 14, sign-safe)
+                scale = D_side / abs(d_target)
+                s_t = np.sign(d_target) * width[1 if d_target > 0 else 0]  # full width on impact side
+            else:
+                # Execution uncapped: normal slippage
+                scale = 1.0
+                s_t = _slippage(d_target, depth_tokens, spread, width)
         else:
+            scale = 1.0
             s_t = 0.0
+
+        # Apply execution cap and recompute x_star, lam_star post-execution
+        # The realised x_star can legitimately end up outside [lambda_down, lambda_up] bounds
+        actual_total_delta = 0.0
+        for side, omega in _SIDES:
+            res = step_results[side]
+            res["actual_delta"] = res["target_delta"] * scale
+            res["x_star"] = res["x"] + res["actual_delta"]
+            res["lam_star"] = omega * res["x_star"] / res["v"] if res["v"] > 0 else 0.0
+            actual_total_delta += res["actual_delta"]
 
         for side, _ in _SIDES:
             res = step_results[side]
@@ -190,7 +223,7 @@ def run_simulation(
                 out[t, COL[f"{suffix}_{side}"]] = res[key]
 
         out[t, COL["target_total_delta"]] = target_total
-        out[t, COL["actual_total_delta"]] = target_total  # eqn 5 caps slippage, not execution size
+        out[t, COL["actual_total_delta"]] = actual_total_delta
         out[t, COL["price_multiplier"]] = (1 + s_t) * m_prev
         out[t, COL["orderbook_effect"]] = s_t
 
@@ -199,68 +232,3 @@ def run_simulation(
     return pd.DataFrame(out, columns=COLUMNS)
 
 
-if __name__ == "__main__":
-
-    print(f"\n{'='*60}")
-    print(f"Simulations for {currency} {frequency}")
-    print(f"{'='*60}")
-
-    # Baseline simulation with no orderbook
-    print(f"\n{'='*60}")
-    print("Running baseline simulation with no orderbook")
-    print(f"{'='*60}")
-
-    binance_data = import_data(currency, frequency)
-
-
-    result = run_simulation(
-        binance_data,
-        lambda_target=lambda_target,
-        lambda_up=lambda_up,
-        lambda_down=lambda_down,
-        orderbook=None
-    )
-
-    output_path = f"dissertation_data/results/{currency}_{frequency}_simulation_no_orderbook.csv"
-    result.to_csv(output_path, index=False)
-    print(f"Results saved to {output_path}")
-    print(f"Shape: {result.shape}")
-
-    # Parameter combinations for orderbooks
-    D_vals = [1_000_000, 50_000_000]  # in USD
-    W_vals = [1, 10]  # in percent
-    S_vals = [0.0005, 0.005]  # in percent
-
-    combinations = [
-        (D, W, S)
-        for D in D_vals
-        for W in W_vals
-        for S in S_vals
-    ]
-
-    # Run simulations for each orderbook combination
-    for orderbook_idx, (D, W, S) in enumerate(combinations, 1):
-        print(f"\n{'='*60}")
-        print(f"Running simulation for orderbook {orderbook_idx}: D={D}, W={W}%, S={S}%")
-        print(f"{'='*60}")
-
-        # Configure orderbook with current parameters
-        orderbook = {
-            "depth": D,
-            "spread": S,
-            "width": W
-        }
-
-        result = run_simulation(
-            binance_data,
-            lambda_target=lambda_target,
-            lambda_up=lambda_up,
-            lambda_down=lambda_down,
-            orderbook=orderbook
-        )
-
-        # Save with orderbook index in filename
-        output_path = f"dissertation_data/results/{currency}_{frequency}_simulation_orderbook_{orderbook_idx}.csv"
-        result.to_csv(output_path, index=False)
-        print(f"Results saved to {output_path}")
-        print(f"Shape: {result.shape}")

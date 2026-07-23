@@ -8,20 +8,6 @@
       "_id": "e9d4af0b-8a40-4254-8e51-d01235aeded5"
     },
     {
-      "name": "Deep Narrow Broad",
-      "depth": 50000000,
-      "width": 1.0,
-      "spread": 0.05,
-      "_id": "537c97ba-263b-40e6-860e-3660ed27f0cd"
-    },
-    {
-      "name": "Deep Wide Tight",
-      "depth": 50000000,
-      "width": 10.0,
-      "spread": 0.005,
-      "_id": "fc311d4a-67a2-48ab-8926-641bff65d0c7"
-    },
-    {
       "name": "Shallow Narrow Tight",
       "depth": 5000000,
       "width": 1.0,
@@ -39,7 +25,7 @@
       "_id": "99d5a133-f91e-4c72-a460-748b7f7a8bb4"
     }
   ],
-  "currency": "btc",
+  "currency": "sushi",
   "frequency": "30s",
   "lambda_target": false,
   "lambda_value": null,

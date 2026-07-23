@@ -1,10 +1,11 @@
 # Imports
-from new_code.price_spillover_simulations import import_data, run_simulation
+from new_code.price_spillover_simulations import run_simulation
 import plotly.graph_objects as go
+import pandas as pd
 
 # Parameters
 currency = "btc"
-frequency = "30s"
+frequency = "15s"
 
 lambda_target = None  # None = boundary rebalancing, float = target rebalancing
 lambda_up = 4  # upper boundary
@@ -27,21 +28,34 @@ show_hover_info = False
 
 
 if __name__ == "__main__":
+    # Load pre-processed data
+    try:
+        print(f"Loading {currency.upper()} at {frequency} frequency...")
+        binance_data = pd.read_parquet(f"dissertation_data/token_dataframes/{currency}_{frequency}_processed.parquet")
+        binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)
+        print(f"Loaded {len(binance_data)} rows")
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"Pre-processed data not found for {currency} at {frequency} frequency.\n"
+            f"Run data_processing.py to prepare the data."
+        )
+
     # Simulation
-    binance_data = import_data(currency, frequency)
     results = {}
 
     for orderbook_name, orderbook in orderbooks.items():
+        print(f"Running simulation for {orderbook_name}")
         result = run_simulation(
-            binance_data,
             lambda_target=lambda_target,
             lambda_up=lambda_up,
             lambda_down=lambda_down,
-            orderbook=orderbook
+            orderbook=orderbook,
+            data=binance_data
         )
         results[orderbook_name] = result
 
     # Plot all simulations together with Plotly
+    print("Plotting the data")
     fig = go.Figure()
     x = binance_data['timestamp'].values
     market_price = binance_data['price'].values

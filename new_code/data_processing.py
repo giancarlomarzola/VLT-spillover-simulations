@@ -1,6 +1,5 @@
 import pandas as pd
 import os
-from IPython.display import display
 
 
 def get_column_names(dataname):
@@ -48,8 +47,7 @@ def get_column_names(dataname):
             "data.M": "Ignore",
         }
     else:
-        Columns = {}
-        # raise Exception(f"dataname {dataname} in function get_column_names not found")
+        raise Exception(f"dataname {dataname} in function get_column_names not found")
 
     return Columns
 
@@ -64,7 +62,7 @@ def load_raw_data(filepath, tradevenue, ticker, timestamp, dataname):
         # Read data, drop 'unnamed' column and rename remaining columns
         df = (
             pd.read_csv(filename, compression="gzip", index_col=False)
-            .drop(columns=["Unnamed: 0"])
+            .drop(columns=["Unnamed: 0"], errors="ignore")
             .rename(columns=colnames)
         )
 
@@ -79,25 +77,19 @@ def load_raw_data(filepath, tradevenue, ticker, timestamp, dataname):
         raise Exception(f"{filename} doesn't exist in location")
 
 
-def process_data(df, token_name, resample_freq=None):
+def process_data(df, token_name):
+    """Clean trade data: extract timestamp and price, sort, and prefix with token_name."""
     df = (
         df.assign(
             timestamp=lambda d: d.Event_time,
-            latency=lambda d: ((d.Event_time - d.Trade_time).dt.total_seconds()).astype(
-                int
-            )
-            / 1000,
+            latency=lambda d: (d.Event_time - d.Trade_time).dt.total_seconds() * 1000,
         )
         .rename(columns={"Price": "price"})
         .loc[:, ["timestamp", "price", "latency"]]
         .sort_values("timestamp")
-        .set_index("timestamp")
     )
 
-    if resample_freq is not None:
-        df = df.resample(resample_freq, closed="right", label="right").last()
-
-    return df.reset_index(drop=False).rename(
+    return df.rename(
         columns=lambda x: f"{token_name}{x}" if x != "timestamp" else x
     )
 
@@ -106,89 +98,92 @@ def add_rebalance_data(token_merged, currency):
     # Load rebalancing data from Excel
     excelfile = "dissertation_data/Leverage Tokens/BinanceLeverageToken.xlsx"
 
-    try:
-        # Read rebalancing data for up and down tokens
-        up_rebalance = pd.read_excel(
-            excelfile, sheet_name=f"{currency.capitalize()}Up", usecols="A:H"
+    # Read rebalancing data for up and down tokens
+    up_rebalance = pd.read_excel(
+        excelfile, sheet_name=f"{currency.capitalize()}Up", usecols="A:H"
+    )
+    down_rebalance = pd.read_excel(
+        excelfile, sheet_name=f"{currency.capitalize()}Down", usecols="A:H"
+    )
+
+    columns_to_clean = [
+        "BasketBefore",
+        "BasketAfter",
+        "LeverageBefore",
+        "LeverageAfter",
+        "TokensBefore",
+        "TokensAfter",
+    ]
+
+    # Clean data and convert to float
+    for df in [up_rebalance, down_rebalance]:
+        for col in columns_to_clean:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.replace("\xa0", "", regex=False)
+                df[col] = df[col].str.replace("+", "", regex=False)
+                df[col] = df[col].str.replace(",", "", regex=False).astype(float)
+
+    # Sort by time
+    up_rebalance = up_rebalance.sort_values("Time").reset_index(drop=True)
+    down_rebalance = down_rebalance.sort_values("Time").reset_index(drop=True)
+
+    # Convert Time to same dtype as timestamp for merge compatibility
+    up_rebalance["Time"] = pd.to_datetime(up_rebalance["Time"]).dt.as_unit("ms")
+    down_rebalance["Time"] = pd.to_datetime(down_rebalance["Time"]).dt.as_unit("ms")
+
+    # Verify timezone: SUSHIUP should have rebalances in the known UTC window
+    if currency.lower() == "sushi":
+        known_window_start = pd.Timestamp("2021-05-19 13:53:55", tz="UTC")
+        known_window_end = pd.Timestamp("2021-05-19 14:05:36", tz="UTC")
+        times_utc = pd.to_datetime(up_rebalance["Time"], utc=True)
+        in_window = times_utc.between(known_window_start, known_window_end).all()
+        if not in_window:
+            out_of_bounds = times_utc[~times_utc.between(known_window_start, known_window_end)]
+            print("WARNING: Some SUSHIUP rebalance times are outside expected UTC window:")
+            print(f"  Expected: {known_window_start} to {known_window_end}")
+            print(f"  Found: {out_of_bounds.min()} to {out_of_bounds.max()}")
+
+    # Merge rebalancing data to token_merged (basket and token counts only)
+    token_merged = pd.merge_asof(
+        token_merged,
+        up_rebalance[["Time", "BasketAfter", "TokensAfter"]],
+        left_on="timestamp",
+        right_on="Time",
+    ).rename(columns={"BasketAfter": "BasketUP", "TokensAfter": "nTokensUP"})
+    token_merged = token_merged.drop(columns=["Time"])
+
+    token_merged = pd.merge_asof(
+        token_merged,
+        down_rebalance[["Time", "BasketAfter", "TokensAfter"]],
+        left_on="timestamp",
+        right_on="Time",
+    ).rename(columns={"BasketAfter": "BasketDOWN", "TokensAfter": "nTokensDOWN"})
+    token_merged = token_merged.drop(columns=["Time"])
+
+    # Verify BasketDOWN is negative (as expected)
+    if (token_merged["BasketDOWN"] > 0).any():
+        print("WARNING: BasketDOWN contains positive values; dropping the minus sign in leverage calculation")
+        token_merged = token_merged.assign(
+            leverageUP   = lambda d: (d.BasketUP   * d.price) / (d.nTokensUP   * d.up_price),
+            leverageDOWN = lambda d: (d.BasketDOWN * d.price) / (d.nTokensDOWN * d.down_price),
         )
-        down_rebalance = pd.read_excel(
-            excelfile, sheet_name=f"{currency.capitalize()}Down", usecols="A:H"
+    else:
+        # Derive mark-to-market leverage from basket (BasketDOWN is already negative)
+        token_merged = token_merged.assign(
+            leverageUP   = lambda d: (d.BasketUP   * d.price) / (d.nTokensUP   * d.up_price),
+            leverageDOWN = lambda d: -(d.BasketDOWN * d.price) / (d.nTokensDOWN * d.down_price),
         )
 
-        columns_to_clean = [
-            "BasketBefore",
-            "BasketAfter",
-            "LeverageBefore",
-            "LeverageAfter",
-            "TokensBefore",
-        ]
+    # Assert all required columns are present before returning
+    required_cols = {"nTokensUP", "nTokensDOWN", "leverageUP", "leverageDOWN", "BasketUP", "BasketDOWN"}
+    assert required_cols <= set(token_merged.columns), \
+        f"Missing required columns: {required_cols - set(token_merged.columns)}"
 
-        # Clean data and convert to float
-        for df in [up_rebalance, down_rebalance]:
-            for col in columns_to_clean:
-                if col in df.columns:
-                    df[col] = df[col].astype(str).str.replace("\xa0", "", regex=False)
-                    df[col] = df[col].str.replace("+", "", regex=False)
-                    df[col] = df[col].str.replace(",", "", regex=False).astype(float)
-
-        # Sort by time
-        up_rebalance = up_rebalance.sort_values("Time").reset_index(drop=True)
-        down_rebalance = down_rebalance.sort_values("Time").reset_index(drop=True)
-
-        # Convert Time to same dtype as timestamp for merge compatibility
-        up_rebalance["Time"] = pd.to_datetime(up_rebalance["Time"]).dt.as_unit("ms")
-        down_rebalance["Time"] = pd.to_datetime(down_rebalance["Time"]).dt.as_unit("ms")
-
-        # Merge rebalancing data to token_merged
-        token_merged = pd.merge_asof(
-            token_merged,
-            up_rebalance[["Time", "BasketAfter", "TokensAfter"]],
-            left_on="timestamp",
-            right_on="Time",
-        ).rename(columns={"BasketAfter": "BasketUP", "TokensAfter": "nTokensUP"})
-        token_merged = token_merged.drop(columns=["Time"])
-
-        token_merged = pd.merge_asof(
-            token_merged,
-            down_rebalance[["Time", "BasketAfter", "TokensAfter"]],
-            left_on="timestamp",
-            right_on="Time",
-        ).rename(columns={"BasketAfter": "BasketDOWN", "TokensAfter": "nTokensDOWN"})
-        token_merged = token_merged.drop(columns=["Time"])
-
-        # Add leverage data
-        token_merged = pd.merge_asof(
-            token_merged,
-            up_rebalance[["Time", "LeverageAfter"]],
-            left_on="timestamp",
-            right_on="Time",
-        ).rename(columns={"LeverageAfter": "leverageUP"})
-        token_merged = token_merged.drop(columns=["Time"])
-
-        token_merged = pd.merge_asof(
-            token_merged,
-            down_rebalance[["Time", "LeverageAfter"]],
-            left_on="timestamp",
-            right_on="Time",
-        ).rename(columns={"LeverageAfter": "leverageDOWN"})
-        token_merged = token_merged.drop(columns=["Time"])
-
-        return token_merged
-
-    except FileNotFoundError:
-        print(
-            f"Warning: Excel file {excelfile} not found. Returning token_merged without rebalance data."
-        )
-        return token_merged
-    except Exception as e:
-        print(
-            f"Warning: Error loading rebalance data: {e}. Returning token_merged without rebalance data."
-        )
-        return token_merged
+    return token_merged
 
 
-def create_currency_df(currency, resample_freq=None, include_rebalance=True):
-    # resample options: e.g. "30s", "min", "5min"
+def create_currency_df(currency, include_rebalance=True):
+    """Load and clean data for a leverage token pair, merging perpetual with UP/DOWN tokens."""
     token_up = load_raw_data(
         "dissertation_data", "binance", f"{currency}upusdt", "2021-05-19", "trade"
     )
@@ -199,15 +194,15 @@ def create_currency_df(currency, resample_freq=None, include_rebalance=True):
         "dissertation_data", "binance-futures", f"{currency}usdt", "2021-05-19", "trade"
     )
 
-    # Clean and resample data
-    token_up = process_data(token_up, "up_", resample_freq)
-    token_down = process_data(token_down, "down_", resample_freq)
-    token = process_data(token, "", resample_freq)
+    # Clean data at tick level (resampling deferred to simulation stage)
+    token_up = process_data(token_up, "up_")
+    token_down = process_data(token_down, "down_")
+    token = process_data(token, "")
 
-    # Merge all dataframes on timestamp using nearest-match merge
-    token_merged = token_up
+    # Merge all dataframes on timestamp; anchor on perpetual (exogenous driver)
+    # Use merge_asof for tick-level data (best match on nearest timestamp)
+    token_merged = pd.merge_asof(token, token_up, on="timestamp")
     token_merged = pd.merge_asof(token_merged, token_down, on="timestamp")
-    token_merged = pd.merge_asof(token_merged, token, on="timestamp")
 
     # Add rebalancing data if requested
     if include_rebalance:
@@ -216,32 +211,60 @@ def create_currency_df(currency, resample_freq=None, include_rebalance=True):
     return token_merged
 
 
-if __name__ == "__main__":
+def prepare_processed_data(currency, frequencies=None):
+    """Load raw data, resample to specified frequencies, then filter to analysis period.
 
-    # Create output folder if it doesn't exist
+    Args:
+        currency: ticker (e.g., "btc", "sushi")
+        frequencies: list of frequencies (e.g., ["15s", "30s", "1min"]).
+    """
     output_folder = "dissertation_data/token_dataframes"
     os.makedirs(output_folder, exist_ok=True)
 
-    # Specify currencies and frequencies to process
+    print(f"Loading {currency.upper()} token data (tick-level, cleaned)...")
+    data = create_currency_df(currency)
+    print(f"Raw data shape: {data.shape}")
+
+    # Ensure timestamp is datetime and UTC-aware
+    data["timestamp"] = pd.to_datetime(data["timestamp"], utc=True)
+
+    # Define analysis period (UTC)
+    analysis_start = pd.Timestamp("2021-05-19 12:00:00", tz="UTC")
+    analysis_end = pd.Timestamp("2021-05-19 14:00:00", tz="UTC")
+
+    # Filter tick-level data to analysis period and save
+    data_filtered = data[data["timestamp"].between(analysis_start, analysis_end)].reset_index(drop=True)
+    print(f"Filtered data shape (2-hour window): {data_filtered.shape}")
+
+    filename_tick = f"{output_folder}/{currency}_tick_processed.parquet"
+    data_filtered.to_parquet(filename_tick, index=False)
+    print(f"Saved tick-level data ({data_filtered.shape[0]} rows) to {filename_tick}")
+
+    if frequencies is not None:
+        # Resample full dataset first (for complete bins), then filter to analysis period
+        for freq in frequencies:
+            df_resampled = data.copy()
+            df_resampled = df_resampled.set_index("timestamp")
+            # Resample entire dataframe to create bins, take last value in each bin
+            df_resampled = df_resampled.resample(freq, closed="right", label="right").last()
+            # Forward-fill any gaps
+            df_resampled = df_resampled.ffill()
+            df_resampled = df_resampled.reset_index()
+
+            # Filter resampled data to analysis period
+            df_resampled = df_resampled[df_resampled["timestamp"].between(analysis_start, analysis_end)].reset_index(drop=True)
+
+            filename = f"{output_folder}/{currency}_{freq}_processed.parquet"
+            df_resampled.to_parquet(filename, index=False)
+            print(f"Saved {freq} resampled data ({df_resampled.shape[0]} rows) to {filename}")
+
+
+if __name__ == "__main__":
     currencies = ["sushi", "btc"]
-    frequencies = [None, "1s", "10s", "15s", "30s", "1min"]
+    frequencies = ["1s", "15s", "30s", "1min"]
 
     for currency in currencies:
-        for freq in frequencies:
-            freq_label = "no_resample" if freq is None else freq
-            print(f"Loading {currency.upper()} token data with {freq_label} resampling...")
-
-            data = create_currency_df(currency, resample_freq=freq)
-            print(f"Data shape: {data.shape}")
-            print(f"Columns: {list(data.columns)}")
-            display(data.head())
-
-            # Save with appropriate filename
-            if freq is None:
-                filename = f"{output_folder}/{currency}_data.csv"
-            else:
-                filename = f"{output_folder}/{currency}_data_{freq}.csv"
-
-            data.to_csv(filename, index=False)
-            print(f"Saved to {filename}")
-            print("\n" + "=" * 50)
+        print(f"\n{'=' * 50}")
+        print(f"Processing {currency.upper()}")
+        print(f"{'=' * 50}")
+        prepare_processed_data(currency, frequencies)
