@@ -2,40 +2,30 @@ import pandas as pd
 import numpy as np
 
 currency = "btc"
-frequency = "1min"
+frequency = "30s"
 
 # Parameters (same for up and down)
-lambda_target = 3  # Only used when rebalance = 'target'
+lambda_target = None  # None = boundary rebalancing, float = target rebalancing
 lambda_up = 4  # upper boundary
 lambda_down = 1.25  # lower boundary
 # lambda_0     = 3.5 # Leverage at start
-rebalance = "boundary"  # either 'boundary' or 'target'
 
 
-# import dataframe
-filename = f"{currency}_data" + (f"_{frequency}" if frequency else "")
-df = pd.read_csv(f"dissertation_data/token_dataframes/{filename}.csv")
+def import_data(currency, frequency):
+    # import dataframe
+    filename = f"{currency}_data" + (f"_{frequency}" if frequency else "")
+    df = pd.read_csv(f"dissertation_data/token_dataframes/{filename}.csv")
 
 
-# Ensure timestamp is datetime format
-df["timestamp"] = pd.to_datetime(df["timestamp"])
+    # Ensure timestamp is datetime format
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
 
-# Filter to analysis period
-analysis_start = pd.Timestamp("2021-05-19 12:00:00")
-analysis_end = pd.Timestamp("2021-05-19 14:00:00")
+    # Filter to analysis period
+    analysis_start = pd.Timestamp("2021-05-19 12:00:00")
+    analysis_end = pd.Timestamp("2021-05-19 14:00:00")
 
-df = df[df["timestamp"].between(analysis_start, analysis_end)].reset_index(drop=True)
-
-
-# Get initial 
-underlying_price = np.array(df["price"].values)
-
-# UP parameters
-up_investment = df["nTokensUP"].iloc[0] * df["up_price"].iloc[0]
-up_lambda_0 = df["leverageUP"].iloc[0]
-# DOWN Parameters
-down_investment = df["nTokensDOWN"].iloc[0] * df["down_price"].iloc[0]
-down_lambda_0 = df["leverageDOWN"].iloc[0]
+    df = df[df["timestamp"].between(analysis_start, analysis_end)].reset_index(drop=True)
+    return df
 
 
 # (internal_key, output_column_suffix) — order matches the original schema
@@ -91,7 +81,7 @@ def _slippage(d, depth, spread, width):
     return s if d > 0 else -s
 
 
-def _step_token(prev, omega, ret, lambda_target, lambda_up, lambda_down, rebalance):
+def _step_token(prev, omega, ret, lambda_target, lambda_up, lambda_down):
     """Advance one token (UP or DOWN) by one time step."""
     v = prev["v"] * (1 + omega * prev["lam_star"] * ret)
     if v <= 0:
@@ -102,13 +92,11 @@ def _step_token(prev, omega, ret, lambda_target, lambda_up, lambda_down, rebalan
 
     if lambda_down <= lam <= lambda_up:
         x_star = x
-    elif rebalance == "boundary":
+    elif lambda_target is None:
         target_lambda = lambda_down if lam <= lambda_down else lambda_up
         x_star = omega * v * target_lambda
-    elif rebalance == "target":
-        x_star = omega * v * lambda_target
     else:
-        raise ValueError(f"unknown rebalance method: {rebalance!r}")
+        x_star = omega * v * lambda_target
 
     lam_star = omega * x_star / v
     target_delta = x_star - x  # in $
@@ -117,36 +105,47 @@ def _step_token(prev, omega, ret, lambda_target, lambda_up, lambda_down, rebalan
             "target_delta": target_delta, "actual_delta": target_delta}
 
 
-def token_characteristics(
-    underlying_price, 
-    lambda_target, 
-    lambda_up, 
-    lambda_down, 
-    up_investment, 
-    up_lambda_0, 
-    down_investment, 
-    down_lambda_0,
-    rebalance, # "target" or "boundary"
-    depth=None, 
-    spread=None, 
-    width=None
+def run_simulation(
+    df, # cleaned binance data df
+    lambda_target, # None = boundary rebalancing, float = target rebalancing
+    lambda_up, # upper boundary
+    lambda_down, # lower boundary
+    orderbook=None,
     ):
     """
     Simulate a pair of variable-leverage UP/DOWN tokens through time.
 
-    depth/spread/width: each a scalar (symmetric book) or a (bid, ask) pair
-    (asymmetric book), in the units of the source equations (depth in
-    tokens). Leave all three as None to run with no price impact. Slippage
-    and the price multiplier follow the one-period execution lag of eqn 5:
-    a rebalance at t only moves the price used at t+1.
+    lambda_target: None uses boundary rebalancing (snap to upper/lower bound),
+    any float uses target rebalancing (rebalance to that target leverage).
+
+    orderbook: dict with keys "depth", "spread", "width", each a scalar
+    (symmetric book) or a (bid, ask) pair (asymmetric book), in the units
+    of the source equations (depth in tokens). Leave as None to run with
+    no price impact. Slippage and the price multiplier follow the
+    one-period execution lag of eqn 5: a rebalance at t only moves the
+    price used at t+1.
     """
-    price = np.asarray(underlying_price, dtype=float)
+
+    # Get initial 
+    price = np.asarray(df["price"].values, dtype=float)
+
+    # UP parameters
+    up_investment = df["nTokensUP"].iloc[0] * df["up_price"].iloc[0]
+    up_lambda_0 = df["leverageUP"].iloc[0]
+    # DOWN Parameters
+    down_investment = df["nTokensDOWN"].iloc[0] * df["down_price"].iloc[0]
+    down_lambda_0 = df["leverageDOWN"].iloc[0]
+
     n = len(price)
     out = np.zeros((n, len(COLUMNS)))
 
-    has_orderbook = depth is not None
+    has_orderbook = orderbook is not None
     if has_orderbook:
-        depth, spread, width = _as_side_pair(depth), _as_side_pair(spread), _as_side_pair(width)
+        depth = _as_side_pair(orderbook["depth"])
+        spread_pair = _as_side_pair(orderbook["spread"])
+        width_pair = _as_side_pair(orderbook["width"])
+        spread = (spread_pair[0] / 100, spread_pair[1] / 100)
+        width = (width_pair[0] / 100, width_pair[1] / 100)
 
     # t = 0
     for side, omega in _SIDES:
@@ -174,7 +173,7 @@ def token_characteristics(
         step_results = {}
         for side, omega in _SIDES:
             prev = {key: out[t - 1, COL[f"{suffix}_{side}"]] for key, suffix in _TOKEN_VARS}
-            res = _step_token(prev, omega, ret, lambda_target, lambda_up, lambda_down, rebalance)
+            res = _step_token(prev, omega, ret, lambda_target, lambda_up, lambda_down)
             step_results[side] = res
             target_total += res["target_delta"]
 
@@ -210,19 +209,15 @@ if __name__ == "__main__":
     print("Running baseline simulation with no orderbook")
     print(f"{'='*60}")
 
-    result = token_characteristics(
-        underlying_price=underlying_price,
+    binance_data = import_data(currency, frequency)
+
+
+    result = run_simulation(
+        binance_data,
         lambda_target=lambda_target,
         lambda_up=lambda_up,
         lambda_down=lambda_down,
-        up_investment=up_investment,
-        up_lambda_0=up_lambda_0,
-        down_investment=down_investment,
-        down_lambda_0=down_lambda_0,
-        rebalance=rebalance,
-        depth=None,
-        spread=None,
-        width=None
+        orderbook=None
     )
 
     output_path = f"dissertation_data/results/{currency}_{frequency}_simulation_no_orderbook.csv"
@@ -233,7 +228,7 @@ if __name__ == "__main__":
     # Parameter combinations for orderbooks
     D_vals = [1_000_000, 50_000_000]  # in USD
     W_vals = [1, 10]  # in percent
-    S_vals = [0.005, 0.5]  # in percent
+    S_vals = [0.0005, 0.005]  # in percent
 
     combinations = [
         (D, W, S)
@@ -251,23 +246,16 @@ if __name__ == "__main__":
         # Configure orderbook with current parameters
         orderbook = {
             "depth": D,
-            "spread": S / 100,  # convert percent to decimal
-            "width": W / 100   # convert percent to decimal
+            "spread": S,
+            "width": W
         }
 
-        result = token_characteristics(
-            underlying_price=underlying_price,
+        result = run_simulation(
+            binance_data,
             lambda_target=lambda_target,
             lambda_up=lambda_up,
             lambda_down=lambda_down,
-            up_investment=up_investment,
-            up_lambda_0=up_lambda_0,
-            down_investment=down_investment,
-            down_lambda_0=down_lambda_0,
-            rebalance=rebalance,
-            depth=orderbook["depth"],
-            spread=orderbook["spread"],
-            width=orderbook["width"]
+            orderbook=orderbook
         )
 
         # Save with orderbook index in filename

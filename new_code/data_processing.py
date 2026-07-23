@@ -224,7 +224,7 @@ if __name__ == "__main__":
 
     # Specify currencies and frequencies to process
     currencies = ["sushi", "btc"]
-    frequencies = [None, "1s", "1min"]
+    frequencies = [None, "1s", "10s", "15s", "30s", "1min"]
 
     for currency in currencies:
         for freq in frequencies:

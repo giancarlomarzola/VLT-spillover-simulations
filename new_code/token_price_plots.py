@@ -6,8 +6,8 @@ from matplotlib.dates import MinuteLocator
 from pathlib import Path
 
 
-currency = "sushi"
-frequency = "1s"
+currency = "btc"
+frequency = "30s"
 
 # Create output folder for plots
 output_folder = Path(f"figures/{currency}_{frequency}")
@@ -38,7 +38,7 @@ simulations = {}
 results_path = Path("dissertation_data/results")
 if results_path.exists():
     for csv_file in sorted(results_path.glob(f"{currency}_*_simulation*.csv")):
-        sim_name = csv_file.stem.replace(f"{currency}_1m_simulation_", "").replace(f"{currency}_simulation_", "")
+        sim_name = csv_file.stem.replace(f"{currency}_{frequency}_simulation_", "").replace(f"{currency}_simulation_", "")
         sim_data = pd.read_csv(csv_file)
         simulations[sim_name] = sim_data
         print(f"Loaded simulation: {sim_name}")
@@ -52,15 +52,15 @@ fsize_legends = 12
 
 # Label options for simulations
 label_options = {
-    'no_orderbook': 'No Orderbook (Baseline)',
-    'orderbook_1': 'Orderbook 1',
-    'orderbook_2': 'Orderbook 2',
-    'orderbook_3': 'Orderbook 3',
-    'orderbook_4': 'Orderbook 4',
-    'orderbook_5': 'Orderbook 5',
-    'orderbook_6': 'Orderbook 6',
-    'orderbook_7': 'Orderbook 7',
-    'orderbook_8': 'Orderbook 8',
+    'no_orderbook': 'no orderbook',
+    'orderbook_1': 'orderbook 1',
+    'orderbook_2': 'orderbook 2',
+    'orderbook_3': 'orderbook 3',
+    'orderbook_4': 'orderbook 4',
+    'orderbook_5': 'orderbook 5',
+    'orderbook_6': 'orderbook 6',
+    'orderbook_7': 'orderbook 7',
+    'orderbook_8': 'orderbook 8',
 }
 
 
@@ -77,7 +77,11 @@ for sim_name, sim_data in simulations.items():
         ax.plot(x, y, alpha=0.6, label=f'{label}')
 
 # Plot actual market price last so it's on top
-ax.plot(x, market_price, color='black', linewidth=2.5, label='Actual Market Price', zorder=5)
+ax.plot(x, market_price, color='black', linewidth=2.5, zorder=5)
+
+# Add title with currency and frequency
+title_freq = frequency.replace('min', 'min ').upper()
+ax.set_title(f'{currency.upper()} {title_freq}Simulation', fontsize=fsize_axis_titles, fontweight='bold', pad=20)
 
 # Format x-axis
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
@@ -112,10 +116,14 @@ for token in ['up', 'down']:
         if len(sim_data) == len(plot_df):
             label = label_options.get(sim_name, sim_name)
             y = sim_data[f'v_{token}'].values
-            ax.plot(x, y, alpha=0.6, label=f'{label} (Simulated)')
+            ax.plot(x, y, alpha=0.6, label=f'{label}')
 
     # Plot actual NAV last so it's on top
-    ax.plot(x, market_nav, color='k', linewidth=2.5, label="Actual NAV", zorder=5)
+    ax.plot(x, market_nav, color='k', linewidth=2.5, zorder=5)
+
+    # Add title with currency and frequency
+    title_freq = frequency.replace('min', 'min ').upper()
+    ax.set_title(f'{currency.upper()} {title_freq}Simulation', fontsize=fsize_axis_titles, fontweight='bold', pad=20)
 
     # format the x-axis
     plt.xlabel('Timestamp', fontsize=fsize_axis_titles)
@@ -133,6 +141,6 @@ for token in ['up', 'down']:
     ax.legend(lines, labels, loc='upper left', frameon=False, fontsize=fsize_legends)
 
     plt.tight_layout()
-    plt.savefig(output_folder / f'{token}_nav.png', dpi=300, bbox_inches='tight')
+    plt.savefig(output_folder / f'nav_{token}.png', dpi=300, bbox_inches='tight')
     print(f"Saved: {output_folder / f'{token}_nav.png'}")
     plt.close()
