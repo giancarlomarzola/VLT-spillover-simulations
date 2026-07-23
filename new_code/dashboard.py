@@ -1,3 +1,9 @@
+"""
+VLT Simulation Dashboard
+Run: 
+streamlit run new_code/dashboard.py
+"""
+
 import sys
 import json
 import uuid
@@ -10,11 +16,7 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 from new_code.price_spillover_simulations import run_simulation
-
-"""
-TO RUN THE DASHBOARD USE THIS COMMAND IN TERMINAL:
-streamlit run new_code/dashboard.py
-"""
+from new_code.data_processing import FREQUENCIES
 
 
 def resample_data(data, resample_freq):
@@ -110,29 +112,34 @@ with st.sidebar:
     default_currency = saved_config.get("currency") if saved_config else (saved_defaults.get("currency") if saved_defaults else "btc")
     default_frequency = saved_config.get("frequency") if saved_config else (saved_defaults.get("frequency") if saved_defaults else "30s")
 
+    available_currencies = ["btc", "sushi", "eth"]
+    default_currency_index = available_currencies.index(default_currency) if default_currency in available_currencies else 0
     currency = st.radio(
         "Currency",
-        ["btc", "sushi"],
+        available_currencies,
         horizontal=True,
-        index=0 if default_currency == "btc" else 1
+        index=default_currency_index
     )
 
-    available_frequencies = ["Tick", "1s", "15s", "30s", "1min"]
-    default_freq_index = available_frequencies.index(default_frequency) if default_frequency in available_frequencies else available_frequencies.index("30s")
-    frequency = st.radio(
-        "Frequency",
-        available_frequencies,
-        horizontal=True,
+    default_freq_index = FREQUENCIES.index(default_frequency) if default_frequency in FREQUENCIES else FREQUENCIES.index("30s")
+    frequency = st.selectbox(
+        "Simulation Frequency",
+        FREQUENCIES,
         index=default_freq_index
     )
     show_hover = st.checkbox("Show hover info", value=False)
 
     # Plot resampling
     st.subheader("Plot Display")
+    # Build resample options: include Tick, all FREQUENCIES, plus common aggregations
+    resample_options = ["raw", "Tick"] + FREQUENCIES[1:] + ["5min", "15min"]
+    resample_options = list(dict.fromkeys(resample_options))  # Remove duplicates while preserving order
+
+    default_resample_index = 2 if frequency in ["Tick", "1s", "15s"] else 2
     plot_resample_freq = st.selectbox(
         "Resample for plot clarity",
-        ["raw", "15s", "30s", "1min", "5min", "15min"],
-        index=2 if frequency in ["Tick", "1s", "15s"] else 2,
+        resample_options,
+        index=default_resample_index,
         help="Use 'raw' to show all data points. Higher frequencies reduce plot clutter for high-frequency data."
     )
 
@@ -143,14 +150,47 @@ with st.sidebar:
     default_lambda_up = (saved_config.get("lambda_up") if saved_config else None) or (saved_defaults.get("lambda_up") if saved_defaults else 4.0)
     default_lambda_down = (saved_config.get("lambda_down") if saved_config else None) or (saved_defaults.get("lambda_down") if saved_defaults else 1.25)
 
-    lambda_target = st.checkbox("Use target rebalancing", value=default_lambda_target)
+    # Strategy toggle
+    rebalancing_mode = st.radio(
+        "Strategy",
+        ["Boundary", "Target"],
+        index=1 if default_lambda_target else 0,
+        horizontal=True,
+        label_visibility="collapsed"
+    )
+    lambda_target = rebalancing_mode == "Target"
+
+    # Target value field (only show if Target mode)
     if lambda_target:
-        lambda_value = st.number_input("Lambda target", value=default_lambda_value, min_value=0.0, step=0.1)
+        lambda_value = st.number_input(
+            "Lambda target value",
+            value=default_lambda_value,
+            min_value=0.0,
+            step=0.1
+        )
     else:
         lambda_value = None
 
-    lambda_up = st.slider("Lambda upper boundary", min_value=1.0, max_value=10.0, value=default_lambda_up, step=0.25)
-    lambda_down = st.slider("Lambda lower boundary", min_value=0.1, max_value=5.0, value=default_lambda_down, step=0.1)
+    # Lambda boundaries
+    st.write("Lambda boundaries")
+    bound_col1, bound_col2 = st.columns(2)
+
+    with bound_col1:
+        lambda_down = st.number_input(
+            "Lower boundary",
+            value=default_lambda_down,
+            min_value=0.1,
+            max_value=10.0,
+            step=0.01
+        )
+    with bound_col2:
+        lambda_up = st.number_input(
+            "Upper boundary",
+            value=default_lambda_up,
+            min_value=0.1,
+            max_value=10.0,
+            step=0.01
+        )
 
     # Orderbook selection
     st.subheader("Orderbook Selection")
@@ -181,8 +221,8 @@ with st.sidebar:
         if "_id" not in orderbook:
             orderbook["_id"] = ob_id
 
-        # Name row with delete button
-        col1, col2 = st.columns([6, 1])
+        # Name row with reorder and delete buttons
+        col1, col2, col3, col4 = st.columns([5.5, 0.5, 0.5, 0.5])
         with col1:
             orderbook["name"] = st.text_input(
                 "Name",
@@ -192,12 +232,26 @@ with st.sidebar:
                 placeholder="Orderbook name"
             )
         with col2:
+            if idx > 0 and st.button("↑", key=f"up_{ob_id}", help="Move up"):
+                st.session_state.orderbooks_list[idx], st.session_state.orderbooks_list[idx - 1] = (
+                    st.session_state.orderbooks_list[idx - 1],
+                    st.session_state.orderbooks_list[idx]
+                )
+                st.rerun()
+        with col3:
+            if idx < len(st.session_state.orderbooks_list) - 1 and st.button("↓", key=f"down_{ob_id}", help="Move down"):
+                st.session_state.orderbooks_list[idx], st.session_state.orderbooks_list[idx + 1] = (
+                    st.session_state.orderbooks_list[idx + 1],
+                    st.session_state.orderbooks_list[idx]
+                )
+                st.rerun()
+        with col4:
             if st.button("🗑️", key=f"delete_{ob_id}", help="Delete this orderbook"):
                 st.session_state.orderbooks_list = [ob for ob in st.session_state.orderbooks_list if ob.get("_id") != ob_id]
                 st.rerun()
 
         # Parameters row (Depth, Width, Spread)
-        param_col1, param_col2, param_col3 = st.columns([2, 1.5, 1.5])
+        param_col1, param_col2, param_col3 = st.columns([1.4, 1.05, 1.05])
 
         with param_col1:
             st.markdown("**Depth (M USD)**")
@@ -248,7 +302,7 @@ with st.sidebar:
                 label_visibility="collapsed",
                 placeholder="e.g., 1 or 0.5, 1"
             )
-            st.caption("e.g., 1 = 1%, 10 = 10%")
+            st.caption("e.g., 1 = 1%")
 
             # Parse width input (handle both single values and tuples)
             try:
@@ -279,7 +333,7 @@ with st.sidebar:
                 label_visibility="collapsed",
                 placeholder="e.g., 0.005 or 0.003, 0.005"
             )
-            st.caption("e.g., 0.005 = 0.5 bps, 0.05 = 5 bps")
+            st.caption("e.g., 0.005 = 0.5 bps")
 
             # Parse spread input (handle both single values and tuples)
             try:
@@ -460,7 +514,10 @@ else:
                 )
 
                 fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black')
-                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black')
+
+                # Set y-axis range: 0 to 1.2 * max market price
+                max_price = market_price.max()
+                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black', range=[0, 1.2 * max_price])
 
                 # Display results
                 st.plotly_chart(fig, width='stretch')

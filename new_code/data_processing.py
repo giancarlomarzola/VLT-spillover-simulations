@@ -2,6 +2,10 @@ import pandas as pd
 import os
 
 
+# Available data frequencies for simulations
+FREQUENCIES = ["Tick", "50ms", "500ms", "1s", "15s", "30s", "1min"]
+
+
 def get_column_names(dataname):
     # Returns a list with the column names corresponding to the chosen dataname
     # Used within 'load_raw_data' function
@@ -260,8 +264,9 @@ def prepare_processed_data(currency, frequencies=None):
 
 
 if __name__ == "__main__":
-    currencies = ["sushi", "btc"]
-    frequencies = ["1s", "15s", "30s", "1min"]
+    currencies = ["sushi", "btc", "eth"]
+    # Use all frequencies except Tick (Tick is loaded separately)
+    frequencies = [f for f in FREQUENCIES if f != "Tick"]
 
     for currency in currencies:
         print(f"\n{'=' * 50}")

@@ -29,18 +29,28 @@
       "_id": "141947ca-487a-4684-a49b-a0cac4658952"
     },
     {
+      "_id": "89e4bf84-d089-4905-83c9-57884f15c642",
+      "name": "Shallow Wide Tight",
+      "depth": 5000000,
+      "width": 5.0,
+      "spread": 0.005
+    },
+    {
       "name": "Asymmetrical",
       "depth": [
         30000000,
         50000000
       ],
-      "width": 1.0,
+      "width": [
+        1.0,
+        5.0
+      ],
       "spread": 0.005,
       "_id": "37018a0d-65a7-4a0a-bcb8-2a9a4211d3f3"
     }
   ],
   "currency": "btc",
-  "frequency": "1s",
+  "frequency": "500ms",
   "lambda_target": false,
   "lambda_value": null,
   "lambda_up": 4.0,
