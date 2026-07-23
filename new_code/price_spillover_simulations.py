@@ -179,7 +179,8 @@ def run_simulation(
 
         if has_orderbook and target_total != 0:
             d_t = target_total / (price[t] * m_prev)  # trade size, in tokens
-            s_t = _slippage(d_t, depth, spread, width)
+            depth_tokens = (depth[0] / (price[t] * m_prev), depth[1] / (price[t] * m_prev))  # convert USD to tokens
+            s_t = _slippage(d_t, depth_tokens, spread, width)
         else:
             s_t = 0.0
 

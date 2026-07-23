@@ -1,0 +1,43 @@
+{
+  "orderbooks": [
+    {
+      "name": "Deep Narrow Tight",
+      "depth": 50000000,
+      "width": 1.0,
+      "spread": 0.005
+    },
+    {
+      "name": "Deep Narrow Broad",
+      "depth": 50000000,
+      "width": 1.0,
+      "spread": 0.05
+    },
+    {
+      "name": "Deep Wide Tight",
+      "depth": 50000000,
+      "width": 10.0,
+      "spread": 0.005
+    },
+    {
+      "name": "Shallow Narrow Tight",
+      "depth": 5000000,
+      "width": 1.0,
+      "spread": 0.005
+    },
+    {
+      "name": "Asymmetrical",
+      "depth": [
+        50000000,
+        30000000
+      ],
+      "width": 1.0,
+      "spread": 0.005
+    }
+  ],
+  "currency": "btc",
+  "frequency": "30s",
+  "lambda_target": false,
+  "lambda_value": null,
+  "lambda_up": 4.0,
+  "lambda_down": 1.25
+}

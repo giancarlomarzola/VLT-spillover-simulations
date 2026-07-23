@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 
 # Parameters
 currency = "btc"
-frequency = "15s"
+frequency = "30s"
 
 lambda_target = None  # None = boundary rebalancing, float = target rebalancing
 lambda_up = 4  # upper boundary

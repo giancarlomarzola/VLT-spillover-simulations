@@ -1,5 +1,12 @@
 import sys
+import json
+import uuid
 from pathlib import Path
+
+"""
+TO RUN THE DASHBOARD USE THIS COMMAND IN TERMINAL: 
+streamlit run new_code/dashboard.py
+"""
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -8,14 +15,64 @@ import streamlit as st
 import plotly.graph_objects as go
 from new_code.price_spillover_simulations import import_data, run_simulation
 
-"""
-TO RUN THE DASHBOARD: 
-streamlit run new_code/dashboard.py
-"""
+# Persistence setup
+CONFIG_DIR = Path(__file__).parent.parent / ".dashboard_config"
+CONFIG_FILE = CONFIG_DIR / "dashboard_state.json"
+DEFAULTS_FILE = CONFIG_DIR / "dashboard_defaults.json"
+
+def load_config():
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return None
+    return None
+
+def load_defaults():
+    if DEFAULTS_FILE.exists():
+        try:
+            with open(DEFAULTS_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return None
+    return None
+
+def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    config = {
+        "orderbooks": orderbooks,
+        "currency": currency,
+        "frequency": frequency,
+        "lambda_target": lambda_target,
+        "lambda_value": lambda_value,
+        "lambda_up": lambda_up,
+        "lambda_down": lambda_down,
+    }
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=2)
+
+def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down):
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    defaults = {
+        "orderbooks": orderbooks,
+        "currency": currency,
+        "frequency": frequency,
+        "lambda_target": lambda_target,
+        "lambda_value": lambda_value,
+        "lambda_up": lambda_up,
+        "lambda_down": lambda_down,
+    }
+    with open(DEFAULTS_FILE, 'w') as f:
+        json.dump(defaults, f, indent=2)
 
 st.set_page_config(layout="wide", page_title="Test Bench Dashboard")
 
 st.title("Test Bench Simulation Dashboard")
+
+# Load persisted config and defaults
+saved_config = load_config()
+saved_defaults = load_defaults()
 
 # Initialize session state for custom orderbooks
 if "custom_orderbooks" not in st.session_state:
@@ -37,116 +94,185 @@ with st.sidebar:
 
     # Currency and Frequency selection
     st.subheader("Simulation Parameters")
-    currency = st.radio("Currency", ["btc", "sushi"], horizontal=True)
-    frequency = st.radio("Frequency", ["15s", "30s", "1min"], horizontal=True, index=1)
+    default_currency = saved_config.get("currency") if saved_config else (saved_defaults.get("currency") if saved_defaults else "btc")
+    default_frequency = saved_config.get("frequency") if saved_config else (saved_defaults.get("frequency") if saved_defaults else "30s")
+
+    currency = st.radio(
+        "Currency",
+        ["btc", "sushi"],
+        horizontal=True,
+        index=0 if default_currency == "btc" else 1
+    )
+    frequency = st.radio(
+        "Frequency",
+        ["15s", "30s", "1min"],
+        horizontal=True,
+        index=["15s", "30s", "1min"].index(default_frequency)
+    )
     show_hover = st.checkbox("Show hover info", value=False)
 
     # Rebalancing parameters
     st.subheader("Rebalancing Strategy")
-    lambda_target = st.checkbox("Use target rebalancing", value=False)
+    default_lambda_target = (saved_config.get("lambda_target") if saved_config else None) or (saved_defaults.get("lambda_target") if saved_defaults else False)
+    default_lambda_value = (saved_config.get("lambda_value") if saved_config else None) or (saved_defaults.get("lambda_value") if saved_defaults else 1.5)
+    default_lambda_up = (saved_config.get("lambda_up") if saved_config else None) or (saved_defaults.get("lambda_up") if saved_defaults else 4.0)
+    default_lambda_down = (saved_config.get("lambda_down") if saved_config else None) or (saved_defaults.get("lambda_down") if saved_defaults else 1.25)
+
+    lambda_target = st.checkbox("Use target rebalancing", value=default_lambda_target)
     if lambda_target:
-        lambda_value = st.number_input("Lambda target", value=1.5, min_value=0.0, step=0.1)
+        lambda_value = st.number_input("Lambda target", value=default_lambda_value, min_value=0.0, step=0.1)
     else:
         lambda_value = None
 
-    lambda_up = st.slider("Lambda upper boundary", min_value=1.0, max_value=10.0, value=4.0, step=0.25)
-    lambda_down = st.slider("Lambda lower boundary", min_value=0.1, max_value=5.0, value=1.25, step=0.1)
+    lambda_up = st.slider("Lambda upper boundary", min_value=1.0, max_value=10.0, value=default_lambda_up, step=0.25)
+    lambda_down = st.slider("Lambda lower boundary", min_value=0.1, max_value=5.0, value=default_lambda_down, step=0.1)
 
     # Orderbook selection
     st.subheader("Orderbook Selection")
+    include_baseline = st.checkbox("Include baseline (no orderbook)", value=True)
 
     # Initialize orderbooks list if not exists
     if "orderbooks_list" not in st.session_state:
-        st.session_state.orderbooks_list = [
-            {"name": "Deep Narrow Tight", "depth": 50_000_000, "width": 1.0, "spread": 0.005},
-            {"name": "Deep Narrow Broad", "depth": 50_000_000, "width": 1.0, "spread": 0.05},
-            {"name": "Deep Wide Tight", "depth": 50_000_000, "width": 10.0, "spread": 0.005},
-            {"name": "Shallow Narrow Tight", "depth": 5_000_000, "width": 1.0, "spread": 0.005},
-        ]
+        if saved_config and "orderbooks" in saved_config:
+            st.session_state.orderbooks_list = saved_config["orderbooks"]
+        elif saved_defaults and "orderbooks" in saved_defaults:
+            st.session_state.orderbooks_list = saved_defaults["orderbooks"]
+        else:
+            st.session_state.orderbooks_list = [
+                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Tight", "depth": 50_000_000, "width": 1.0, "spread": 0.005},
+                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Broad", "depth": 50_000_000, "width": 1.0, "spread": 0.05},
+                {"_id": str(uuid.uuid4()), "name": "Deep Wide Tight", "depth": 50_000_000, "width": 10.0, "spread": 0.005},
+                {"_id": str(uuid.uuid4()), "name": "Shallow Narrow Tight", "depth": 5_000_000, "width": 1.0, "spread": 0.005},
+            ]
 
-    # Display header with column titles
-    col1, col2, col3, col4, col5 = st.columns([2, 1.5, 1, 1, 0.5])
-    with col1:
-        st.markdown("**Name**")
-    with col2:
-        st.markdown("**Depth (USDT)**")
-    with col3:
-        st.markdown("**Width (%)**")
-    with col4:
-        st.markdown("**Spread (%)**")
-    with col5:
-        st.markdown("")
+        # Ensure all loaded orderbooks have _id (for backwards compatibility)
+        for ob in st.session_state.orderbooks_list:
+            if "_id" not in ob:
+                ob["_id"] = str(uuid.uuid4())
 
     # Display orderbook rows
-    for idx in range(len(st.session_state.orderbooks_list)):
-        orderbook = st.session_state.orderbooks_list[idx]
-        col1, col2, col3, col4, col5 = st.columns([2, 1.5, 1, 1, 0.5])
+    for idx, orderbook in enumerate(st.session_state.orderbooks_list):
+        ob_id = orderbook.get("_id", str(uuid.uuid4()))
+        if "_id" not in orderbook:
+            orderbook["_id"] = ob_id
 
+        # Name row with delete button
+        col1, col2 = st.columns([6, 1])
         with col1:
             orderbook["name"] = st.text_input(
                 "Name",
                 value=orderbook["name"],
-                key=f"name_{idx}",
+                key=f"name_{ob_id}",
                 label_visibility="collapsed",
                 placeholder="Orderbook name"
             )
-
         with col2:
-            # Format depth for display (handle both int and tuple)
+            if st.button("🗑️", key=f"delete_{ob_id}", help="Delete this orderbook"):
+                st.session_state.orderbooks_list = [ob for ob in st.session_state.orderbooks_list if ob.get("_id") != ob_id]
+                st.rerun()
+
+        # Parameters row (Depth, Width, Spread)
+        param_col1, param_col2, param_col3 = st.columns([2, 1.5, 1.5])
+
+        with param_col1:
+            st.markdown("**Depth (M USD)**")
+            # Convert list back to tuple if needed (from JSON deserialization)
+            if isinstance(orderbook["depth"], list):
+                orderbook["depth"] = tuple(orderbook["depth"])
+
+            # Format depth for display in millions (handle both int and tuple)
             if isinstance(orderbook["depth"], tuple):
-                depth_str = f"{orderbook['depth'][0]:,}, {orderbook['depth'][1]:,}"
+                depth_str = f"{orderbook['depth'][0] / 1_000_000:.1f}, {orderbook['depth'][1] / 1_000_000:.1f}"
             else:
-                depth_str = f"{orderbook['depth']:,}"
+                depth_str = f"{orderbook['depth'] / 1_000_000:.1f}"
 
             depth_input = st.text_input(
                 "Depth",
                 value=depth_str,
-                key=f"depth_{idx}",
+                key=f"depth_{ob_id}",
                 label_visibility="collapsed",
-                placeholder="e.g., 50000000 or 30000000, 50000000"
+                placeholder="e.g., 50 or 30, 50"
             )
 
-            # Parse depth input (handle both single values and tuples)
+            # Parse depth input (handle both single values and tuples), convert from millions
             try:
                 if "," in depth_input:
-                    parts = [int(p.strip().replace(",", "")) for p in depth_input.split(",")]
+                    parts = [int(float(p.strip()) * 1_000_000) for p in depth_input.split(",")]
                     orderbook["depth"] = tuple(parts) if len(parts) == 2 else parts[0]
                 else:
-                    orderbook["depth"] = int(depth_input.replace(",", ""))
+                    orderbook["depth"] = int(float(depth_input) * 1_000_000)
             except ValueError:
                 pass  # Keep previous value if parsing fails
 
-        with col3:
-            orderbook["width"] = st.number_input(
+        with param_col2:
+            st.markdown("**Width (%)**")
+            # Convert list back to tuple if needed (from JSON deserialization)
+            if isinstance(orderbook["width"], list):
+                orderbook["width"] = tuple(orderbook["width"])
+
+            # Format width for display (handle both float and tuple)
+            if isinstance(orderbook["width"], tuple):
+                width_str = f"{orderbook['width'][0]}, {orderbook['width'][1]}"
+            else:
+                width_str = str(orderbook["width"])
+
+            width_input = st.text_input(
                 "Width",
-                value=orderbook["width"],
-                min_value=0.1,
-                max_value=50.0,
-                step=0.1,
-                key=f"width_{idx}",
-                label_visibility="collapsed"
+                value=width_str,
+                key=f"width_{ob_id}",
+                label_visibility="collapsed",
+                placeholder="e.g., 1 or 0.5, 1"
             )
+            st.caption("e.g., 1 = 1%, 10 = 10%")
 
-        with col4:
-            orderbook["spread"] = st.number_input(
+            # Parse width input (handle both single values and tuples)
+            try:
+                if "," in width_input:
+                    parts = [float(p.strip()) for p in width_input.split(",")]
+                    orderbook["width"] = tuple(parts) if len(parts) == 2 else parts[0]
+                else:
+                    orderbook["width"] = float(width_input)
+            except ValueError:
+                pass  # Keep previous value if parsing fails
+
+        with param_col3:
+            st.markdown("**Spread (%)**")
+            # Convert list back to tuple if needed (from JSON deserialization)
+            if isinstance(orderbook["spread"], list):
+                orderbook["spread"] = tuple(orderbook["spread"])
+
+            # Format spread for display (handle both float and tuple)
+            if isinstance(orderbook["spread"], tuple):
+                spread_str = f"{orderbook['spread'][0]}, {orderbook['spread'][1]}"
+            else:
+                spread_str = str(orderbook["spread"])
+
+            spread_input = st.text_input(
                 "Spread",
-                value=orderbook["spread"],
-                min_value=0.001,
-                max_value=1.0,
-                step=0.001,
-                key=f"spread_{idx}",
-                label_visibility="collapsed"
+                value=spread_str,
+                key=f"spread_{ob_id}",
+                label_visibility="collapsed",
+                placeholder="e.g., 0.005 or 0.003, 0.005"
             )
+            st.caption("e.g., 0.005 = 0.5 bps, 0.05 = 5 bps")
 
-        with col5:
-            if st.button("🗑️", key=f"delete_{idx}", help="Delete this orderbook"):
-                st.session_state.orderbooks_list.pop(idx)
-                st.rerun()
+            # Parse spread input (handle both single values and tuples)
+            try:
+                if "," in spread_input:
+                    parts = [float(p.strip()) for p in spread_input.split(",")]
+                    orderbook["spread"] = tuple(parts) if len(parts) == 2 else parts[0]
+                else:
+                    orderbook["spread"] = float(spread_input)
+            except ValueError:
+                pass  # Keep previous value if parsing fails
+
+        st.divider()
 
     # Add row button
     if len(st.session_state.orderbooks_list) < 8:
         if st.button("+ Add Orderbook", type="primary"):
             st.session_state.orderbooks_list.append({
+                "_id": str(uuid.uuid4()),
                 "name": f"Orderbook {len(st.session_state.orderbooks_list) + 1}",
                 "depth": 50_000_000,
                 "width": 1.0,
@@ -154,8 +280,27 @@ with st.sidebar:
             })
             st.rerun()
 
+    # Settings management buttons
+    st.divider()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💾 Save as Default", width='stretch'):
+            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down)
+            st.success("Settings saved as default!")
+
+    with col2:
+        if st.button("🔄 Reset to Default", width='stretch'):
+            if saved_defaults:
+                st.session_state.orderbooks_list = saved_defaults.get("orderbooks", st.session_state.orderbooks_list)
+                st.rerun()
+            else:
+                st.info("No defaults saved yet")
+
     # Build selected_orderbooks from the list
     selected_orderbooks = {}
+    if include_baseline:
+        selected_orderbooks["Baseline (No Orderbook)"] = None
+
     for orderbook in st.session_state.orderbooks_list:
         if orderbook["name"]:  # Only include if name is not empty
             selected_orderbooks[orderbook["name"]] = {
@@ -163,6 +308,9 @@ with st.sidebar:
                 "width": orderbook["width"],
                 "spread": orderbook["spread"]
             }
+
+    # Save configuration
+    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down)
 
 # Main content
 if not selected_orderbooks:
@@ -177,7 +325,28 @@ else:
                 results = {}
 
                 # Run simulations
+                st.info("Orderbook Parameters:")
                 for orderbook_name, orderbook in selected_orderbooks.items():
+                    if orderbook is not None:
+                        depth = orderbook.get('depth')
+                        width = orderbook.get('width')
+                        spread = orderbook.get('spread')
+                        # Handle tuples
+                        if isinstance(depth, (list, tuple)):
+                            depth_display = f"({depth[0]:,}, {depth[1]:,})"
+                        else:
+                            depth_display = f"{depth:,}"
+                        if isinstance(width, (list, tuple)):
+                            width_display = f"({width[0]}, {width[1]})"
+                        else:
+                            width_display = f"{width}"
+                        if isinstance(spread, (list, tuple)):
+                            spread_display = f"({spread[0]}, {spread[1]})"
+                        else:
+                            spread_display = f"{spread}"
+
+                        st.write(f"**{orderbook_name}** → Depth: {depth_display}, Width: {width_display}, Spread: {spread_display}")
+
                     result = run_simulation(
                         binance_data,
                         lambda_target=lambda_value,
@@ -242,7 +411,7 @@ else:
                 fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black')
 
                 # Display results
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
                 st.success("Simulation completed!")
 
