@@ -17,6 +17,17 @@ streamlit run new_code/dashboard.py
 """
 
 
+def resample_data(data, resample_freq):
+    """Resample time-series data to a coarser frequency by taking the last value in each period."""
+    if resample_freq == "raw":
+        return data.copy()
+
+    df = data.copy()
+    df.set_index('timestamp', inplace=True)
+    resampled = df.resample(resample_freq).last()
+    resampled.reset_index(inplace=True)
+    return resampled
+
 # Persistence setup
 CONFIG_DIR = Path(__file__).parent.parent / ".dashboard_config"
 CONFIG_FILE = CONFIG_DIR / "dashboard_state.json"
@@ -115,6 +126,15 @@ with st.sidebar:
         index=default_freq_index
     )
     show_hover = st.checkbox("Show hover info", value=False)
+
+    # Plot resampling
+    st.subheader("Plot Display")
+    plot_resample_freq = st.selectbox(
+        "Resample for plot clarity",
+        ["raw", "15s", "30s", "1min", "5min", "15min"],
+        index=2 if frequency in ["Tick", "1s", "15s"] else 2,
+        help="Use 'raw' to show all data points. Higher frequencies reduce plot clutter for high-frequency data."
+    )
 
     # Rebalancing parameters
     st.subheader("Rebalancing Strategy")
@@ -368,16 +388,36 @@ else:
                     )
                     results[orderbook_name] = result
 
+                # Resample data for plotting if requested
+                plot_data = binance_data.copy()
+                resampled_results = {}
+
+                if plot_resample_freq != "raw":
+                    # Resample binance_data (market price and timestamp)
+                    plot_data = resample_data(plot_data, plot_resample_freq)
+
+                    # For each result, add timestamp and resample, keeping only price_multiplier
+                    for name, result in results.items():
+                        result_with_ts = result.copy()
+                        result_with_ts['timestamp'] = binance_data['timestamp'].values
+                        resampled = resample_data(result_with_ts, plot_resample_freq)
+                        # Keep only the columns we need
+                        resampled_results[name] = resampled[['timestamp', 'price_multiplier']].reset_index(drop=True)
+                else:
+                    # For raw data, just extract price_multiplier from each result
+                    for name, result in results.items():
+                        resampled_results[name] = result[['price_multiplier']].reset_index(drop=True)
+
                 # Plot simulations
                 fig = go.Figure()
-                x = binance_data['timestamp'].values
-                market_price = binance_data['price'].values
+                x = plot_data['timestamp'].values
+                market_price = plot_data['price'].values
 
                 dash_styles = ['solid', 'dash', 'dashdot', 'solid', 'dash', 'dashdot', 'solid', 'dash', 'dashdot', 'solid']
                 markers = ['circle', 'square', 'triangle-up', 'diamond', 'triangle-down', 'pentagon', 'hexagon', 'cross', 'x', 'star']
                 marker_offsets = [0, 3, 6, 1, 4, 7, 2, 5, 8, 0]
 
-                for (orderbook_name, result), dash, marker, offset in zip(results.items(), dash_styles, markers, marker_offsets):
+                for (orderbook_name, result), dash, marker, offset in zip(resampled_results.items(), dash_styles, markers, marker_offsets):
                     simulated_price = market_price * result['price_multiplier'].values
                     marker_indices = list(range(offset, len(x), 10))
 

@@ -51,7 +51,10 @@ def _slippage(d, depth, spread, width):
         return 0.0
     D, S, W = (depth[1], spread[1], width[1]) if d > 0 else (depth[0], spread[0], width[0])
     x = abs(d)
-    s = W if x > D else x * (W - S) / D + S
+    if D == 0:
+        s = W
+    else:
+        s = W if x > D else x * (W - S) / D + S
     return s if d > 0 else -s
 
 
@@ -175,10 +178,15 @@ def run_simulation(
     for t in range(1, n):
         m_prev = out[t - 1, COL["price_multiplier"]]  # m_{t-1}
 
-        if has_orderbook:
-            ret = (price[t] * m_prev) / (price[t - 1] * m_lag) - 1
+        # Guard against division by zero from zero/corrupted prices or multipliers
+        if price[t - 1] == 0 or price[t] == 0 or m_lag == 0 or m_prev == 0:
+            # Can't compute return; mark as zero for safety (skip rebalancing this period)
+            ret = 0.0
         else:
-            ret = price[t] / price[t - 1] - 1
+            if has_orderbook:
+                ret = (price[t] * m_prev) / (price[t - 1] * m_lag) - 1
+            else:
+                ret = price[t] / price[t - 1] - 1
 
         target_total = 0.0
         step_results = {}
@@ -189,7 +197,7 @@ def run_simulation(
             target_total += res["target_delta"]
 
         # Execution cap: if net trade exceeds available depth on either side, scale both sides (eqn 14)
-        if has_orderbook and target_total != 0:
+        if has_orderbook and target_total != 0 and price[t] * m_prev != 0:
             d_target = target_total / (price[t] * m_prev)  # trade size, in tokens
             # Convert USD depth to tokens (the conversion and reconversion cancel exactly)
             depth_tokens = (depth[0] / (price[t] * m_prev), depth[1] / (price[t] * m_prev))
@@ -224,7 +232,9 @@ def run_simulation(
 
         out[t, COL["target_total_delta"]] = target_total
         out[t, COL["actual_total_delta"]] = actual_total_delta
-        out[t, COL["price_multiplier"]] = (1 + s_t) * m_prev
+        m_new = (1 + s_t) * m_prev
+        # Clamp to prevent multiplier from going non-positive (would cause NaN/inf in next iteration)
+        out[t, COL["price_multiplier"]] = max(m_new, 1e-10)
         out[t, COL["orderbook_effect"]] = s_t
 
         m_lag = m_prev  # becomes m_{t-1}, needed as the lag term at t+1

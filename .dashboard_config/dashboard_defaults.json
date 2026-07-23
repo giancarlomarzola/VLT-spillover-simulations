@@ -4,38 +4,43 @@
       "name": "Deep Narrow Tight",
       "depth": 50000000,
       "width": 1.0,
-      "spread": 0.005
+      "spread": 0.005,
+      "_id": "fe511bdd-87af-454c-bd87-84eb179b840d"
     },
     {
       "name": "Deep Narrow Broad",
       "depth": 50000000,
       "width": 1.0,
-      "spread": 0.05
+      "spread": 0.05,
+      "_id": "4a54cbd6-1370-4251-8340-fe6db70c96e9"
     },
     {
       "name": "Deep Wide Tight",
       "depth": 50000000,
       "width": 10.0,
-      "spread": 0.005
+      "spread": 0.005,
+      "_id": "482bdf76-b89a-4478-af7c-2812964c295b"
     },
     {
       "name": "Shallow Narrow Tight",
       "depth": 5000000,
       "width": 1.0,
-      "spread": 0.005
+      "spread": 0.005,
+      "_id": "141947ca-487a-4684-a49b-a0cac4658952"
     },
     {
       "name": "Asymmetrical",
       "depth": [
-        50000000,
-        30000000
+        30000000,
+        50000000
       ],
       "width": 1.0,
-      "spread": 0.005
+      "spread": 0.005,
+      "_id": "37018a0d-65a7-4a0a-bcb8-2a9a4211d3f3"
     }
   ],
   "currency": "btc",
-  "frequency": "30s",
+  "frequency": "1s",
   "lambda_target": false,
   "lambda_value": null,
   "lambda_up": 4.0,
