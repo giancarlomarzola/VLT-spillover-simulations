@@ -19,6 +19,18 @@ from new_code.price_spillover_simulations import run_simulation
 from new_code.data_processing import FREQUENCIES
 
 
+def frequency_to_seconds(freq):
+    """Convert frequency string to seconds for comparison."""
+    if freq == "Tick":
+        return 0
+    if freq.endswith("ms"):
+        return float(freq[:-2]) / 1000
+    if freq.endswith("s"):
+        return float(freq[:-1])
+    if freq.endswith("min"):
+        return float(freq[:-3]) * 60
+    return float('inf')
+
 def resample_data(data, resample_freq):
     """Resample time-series data to a coarser frequency by taking the last value in each period."""
     if resample_freq == "raw":
@@ -53,7 +65,7 @@ def load_defaults():
             return None
     return None
 
-def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down):
+def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     config = {
         "orderbooks": orderbooks,
@@ -63,11 +75,14 @@ def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, la
         "lambda_value": lambda_value,
         "lambda_up": lambda_up,
         "lambda_down": lambda_down,
+        "show_hover": show_hover,
+        "show_markers": show_markers,
+        "include_baseline": include_baseline,
     }
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=2)
 
-def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down):
+def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     defaults = {
         "orderbooks": orderbooks,
@@ -77,21 +92,28 @@ def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_valu
         "lambda_value": lambda_value,
         "lambda_up": lambda_up,
         "lambda_down": lambda_down,
+        "show_hover": show_hover,
+        "show_markers": show_markers,
+        "include_baseline": include_baseline,
     }
     with open(DEFAULTS_FILE, 'w') as f:
         json.dump(defaults, f, indent=2)
 
 st.set_page_config(layout="wide", page_title="Test Bench Dashboard")
 
-st.title("Test Bench Simulation Dashboard")
-
 # Load persisted config and defaults
 saved_config = load_config()
 saved_defaults = load_defaults()
 
-# Initialize session state for custom orderbooks
+# Initialize session state
 if "custom_orderbooks" not in st.session_state:
     st.session_state.custom_orderbooks = {}
+if "plot_resample_freq" not in st.session_state:
+    st.session_state.plot_resample_freq = "15s"
+
+def reset_plot_resample():
+    """Reset plot resample frequency when settings change."""
+    st.session_state.plot_resample_freq = "15s"
 
 # Predefined orderbooks
 predefined_orderbooks = {
@@ -118,30 +140,44 @@ with st.sidebar:
         "Currency",
         available_currencies,
         horizontal=True,
-        index=default_currency_index
+        index=default_currency_index,
+        on_change=reset_plot_resample
     )
 
     default_freq_index = FREQUENCIES.index(default_frequency) if default_frequency in FREQUENCIES else FREQUENCIES.index("30s")
     frequency = st.selectbox(
         "Simulation Frequency",
         FREQUENCIES,
-        index=default_freq_index
+        index=default_freq_index,
+        on_change=reset_plot_resample
     )
-    show_hover = st.checkbox("Show hover info", value=False)
+    default_show_hover = (saved_config.get("show_hover") if saved_config else None) or (saved_defaults.get("show_hover") if saved_defaults else False)
+    show_hover = st.checkbox("Show hover info", value=default_show_hover)
 
     # Plot resampling
     st.subheader("Plot Display")
-    # Build resample options: include Tick, all FREQUENCIES, plus common aggregations
-    resample_options = ["raw", "Tick"] + FREQUENCIES[1:] + ["5min", "15min"]
+    # Build resample options: raw or frequencies strictly greater than simulation frequency
+    all_resample_options = ["raw"] + FREQUENCIES + ["5min", "15min"]
+    sim_freq_seconds = frequency_to_seconds(frequency)
+    resample_options = ["raw"] + [f for f in all_resample_options[1:] if frequency_to_seconds(f) > sim_freq_seconds]
     resample_options = list(dict.fromkeys(resample_options))  # Remove duplicates while preserving order
 
-    default_resample_index = 2 if frequency in ["Tick", "1s", "15s"] else 2
+    # Use session state value if it's in the available options, otherwise default to "raw"
+    if st.session_state.plot_resample_freq in resample_options:
+        default_resample_index = resample_options.index(st.session_state.plot_resample_freq)
+    else:
+        default_resample_index = 0  # Default to "raw"
+
     plot_resample_freq = st.selectbox(
         "Resample for plot clarity",
         resample_options,
         index=default_resample_index,
-        help="Use 'raw' to show all data points. Higher frequencies reduce plot clutter for high-frequency data."
+        help="Use 'raw' to show all data points. Only shows resample frequencies coarser than simulation frequency."
     )
+    st.session_state.plot_resample_freq = plot_resample_freq
+
+    default_show_markers = (saved_config.get("show_markers") if saved_config else None) or (saved_defaults.get("show_markers") if saved_defaults else True)
+    show_markers = st.checkbox("Show markers on lines", value=default_show_markers)
 
     # Rebalancing parameters
     st.subheader("Rebalancing Strategy")
@@ -156,7 +192,8 @@ with st.sidebar:
         ["Boundary", "Target"],
         index=1 if default_lambda_target else 0,
         horizontal=True,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        on_change=reset_plot_resample
     )
     lambda_target = rebalancing_mode == "Target"
 
@@ -194,7 +231,8 @@ with st.sidebar:
 
     # Orderbook selection
     st.subheader("Orderbook Selection")
-    include_baseline = st.checkbox("Include baseline (no orderbook)", value=True)
+    default_include_baseline = (saved_config.get("include_baseline") if saved_config else None) or (saved_defaults.get("include_baseline") if saved_defaults else True)
+    include_baseline = st.checkbox("Include baseline (no orderbook)", value=default_include_baseline, on_change=reset_plot_resample)
 
     # Initialize orderbooks list if not exists
     if "orderbooks_list" not in st.session_state:
@@ -222,7 +260,9 @@ with st.sidebar:
             orderbook["_id"] = ob_id
 
         # Name row with reorder and delete buttons
-        col1, col2, col3, col4 = st.columns([5.5, 0.5, 0.5, 0.5])
+        col0, col1, col2, col3, col4 = st.columns([0.4, 4.6, 0.8, 0.8, 0.8])
+        with col0:
+            st.markdown(f"**{idx + 1}**")
         with col1:
             orderbook["name"] = st.text_input(
                 "Name",
@@ -364,7 +404,7 @@ with st.sidebar:
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💾 Save as Default", width='stretch'):
-            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down)
+            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline)
             st.success("Settings saved as default!")
 
     with col2:
@@ -389,146 +429,152 @@ with st.sidebar:
             }
 
     # Save configuration
-    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down)
+    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline)
 
 # Main content
 if not selected_orderbooks:
     st.warning("Please select at least one orderbook to run the simulation.")
 else:
+    # Create placeholder for plot at the top
+    plot_placeholder = st.empty()
+
     # Run simulation button
     if st.button("Run Simulation", type="primary"):
-        with st.spinner("Running simulation..."):
-            try:
-                # Load pre-processed data
-                if frequency == "Tick":
-                    filepath = f"dissertation_data/token_dataframes/{currency}_tick_processed.parquet"
-                else:
-                    filepath = f"dissertation_data/token_dataframes/{currency}_{frequency}_processed.parquet"
+            with st.spinner("Running simulation..."):
+                try:
+                    # Load pre-processed data
+                    if frequency == "Tick":
+                        filepath = f"dissertation_data/token_dataframes/{currency}_tick_processed.parquet"
+                    else:
+                        filepath = f"dissertation_data/token_dataframes/{currency}_{frequency}_processed.parquet"
 
-                binance_data = pd.read_parquet(filepath)
-                binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)
+                    binance_data = pd.read_parquet(filepath)
+                    binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)
 
-                results = {}
+                    results = {}
 
-                # Run simulations
-                st.info("Orderbook Parameters:")
-                for orderbook_name, orderbook in selected_orderbooks.items():
-                    if orderbook is not None:
-                        depth = orderbook.get('depth')
-                        width = orderbook.get('width')
-                        spread = orderbook.get('spread')
-                        # Handle tuples
-                        if isinstance(depth, (list, tuple)):
-                            depth_display = f"({depth[0]:,}, {depth[1]:,})"
-                        else:
-                            depth_display = f"{depth:,}"
-                        if isinstance(width, (list, tuple)):
-                            width_display = f"({width[0]}, {width[1]})"
-                        else:
-                            width_display = f"{width}"
-                        if isinstance(spread, (list, tuple)):
-                            spread_display = f"({spread[0]}, {spread[1]})"
-                        else:
-                            spread_display = f"{spread}"
+                    # Run simulations
+                    st.info("Orderbook Parameters:")
+                    for orderbook_name, orderbook in selected_orderbooks.items():
+                        if orderbook is not None:
+                            depth = orderbook.get('depth')
+                            width = orderbook.get('width')
+                            spread = orderbook.get('spread')
+                            # Handle tuples
+                            if isinstance(depth, (list, tuple)):
+                                depth_display = f"({depth[0]:,}, {depth[1]:,})"
+                            else:
+                                depth_display = f"{depth:,}"
+                            if isinstance(width, (list, tuple)):
+                                width_display = f"({width[0]}, {width[1]})"
+                            else:
+                                width_display = f"{width}"
+                            if isinstance(spread, (list, tuple)):
+                                spread_display = f"({spread[0]}, {spread[1]})"
+                            else:
+                                spread_display = f"{spread}"
 
-                        st.write(f"**{orderbook_name}** → Depth: {depth_display}, Width: {width_display}, Spread: {spread_display}")
+                            st.write(f"**{orderbook_name}** → Depth: {depth_display}, Width: {width_display}, Spread: {spread_display}")
 
-                    result = run_simulation(
-                        lambda_target=lambda_value,
-                        lambda_up=lambda_up,
-                        lambda_down=lambda_down,
-                        orderbook=orderbook,
-                        data=binance_data
-                    )
-                    results[orderbook_name] = result
+                        result = run_simulation(
+                            lambda_target=lambda_value,
+                            lambda_up=lambda_up,
+                            lambda_down=lambda_down,
+                            orderbook=orderbook,
+                            data=binance_data
+                        )
+                        results[orderbook_name] = result
 
-                # Resample data for plotting if requested
-                plot_data = binance_data.copy()
-                resampled_results = {}
+                    # Resample data for plotting if requested
+                    plot_data = binance_data.copy()
+                    resampled_results = {}
 
-                if plot_resample_freq != "raw":
-                    # Resample binance_data (market price and timestamp)
-                    plot_data = resample_data(plot_data, plot_resample_freq)
+                    if plot_resample_freq != "raw":
+                        # Resample binance_data (market price and timestamp)
+                        plot_data = resample_data(plot_data, plot_resample_freq)
 
-                    # For each result, add timestamp and resample, keeping only price_multiplier
-                    for name, result in results.items():
-                        result_with_ts = result.copy()
-                        result_with_ts['timestamp'] = binance_data['timestamp'].values
-                        resampled = resample_data(result_with_ts, plot_resample_freq)
-                        # Keep only the columns we need
-                        resampled_results[name] = resampled[['timestamp', 'price_multiplier']].reset_index(drop=True)
-                else:
-                    # For raw data, just extract price_multiplier from each result
-                    for name, result in results.items():
-                        resampled_results[name] = result[['price_multiplier']].reset_index(drop=True)
+                        # For each result, add timestamp and resample, keeping only price_multiplier
+                        for name, result in results.items():
+                            result_with_ts = result.copy()
+                            result_with_ts['timestamp'] = binance_data['timestamp'].values
+                            resampled = resample_data(result_with_ts, plot_resample_freq)
+                            # Keep only the columns we need
+                            resampled_results[name] = resampled[['timestamp', 'price_multiplier']].reset_index(drop=True)
+                    else:
+                        # For raw data, just extract price_multiplier from each result
+                        for name, result in results.items():
+                            resampled_results[name] = result[['price_multiplier']].reset_index(drop=True)
 
-                # Plot simulations
-                fig = go.Figure()
-                x = plot_data['timestamp'].values
-                market_price = plot_data['price'].values
+                    # Plot simulations
+                    fig = go.Figure()
+                    x = plot_data['timestamp'].values
+                    market_price = plot_data['price'].values
 
-                dash_styles = ['solid', 'dash', 'dashdot', 'solid', 'dash', 'dashdot', 'solid', 'dash', 'dashdot', 'solid']
-                markers = ['circle', 'square', 'triangle-up', 'diamond', 'triangle-down', 'pentagon', 'hexagon', 'cross', 'x', 'star']
-                marker_offsets = [0, 3, 6, 1, 4, 7, 2, 5, 8, 0]
+                    dash_styles = ['solid', '6 3', '6 3 1 3', 'solid', '6 3', '6 3 1 3', 'solid', '6 3', '6 3 1 3', 'solid']
+                    markers = ['circle', 'square', 'triangle-up', 'diamond', 'triangle-down', 'pentagon', 'hexagon', 'cross', 'x', 'star']
+                    marker_offsets = [0, 3, 6, 1, 4, 7, 2, 5, 8, 0]
 
-                for (orderbook_name, result), dash, marker, offset in zip(resampled_results.items(), dash_styles, markers, marker_offsets):
-                    simulated_price = market_price * result['price_multiplier'].values
-                    marker_indices = list(range(offset, len(x), 10))
+                    for (orderbook_name, result), dash, marker, offset in zip(resampled_results.items(), dash_styles, markers, marker_offsets):
+                        simulated_price = market_price * result['price_multiplier'].values
+                        marker_indices = list(range(offset, len(x), 10))
 
+                        trace_mode = 'lines+markers' if show_markers else 'lines'
+                        fig.add_trace(go.Scatter(
+                            x=x, y=simulated_price,
+                            mode=trace_mode,
+                            name=orderbook_name,
+                            line=dict(dash=dash, width=2),
+                            marker=dict(size=6, symbol=marker, line=dict(width=1, color='white')) if show_markers else None,
+                            showlegend=True,
+                            opacity=1,
+                            hovertemplate='<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>Price: $%{y:.2f}<extra></extra>' if show_hover else None,
+                            hoverinfo='skip' if not show_hover else None,
+                        ))
+
+                    # Plot actual market price
                     fig.add_trace(go.Scatter(
-                        x=x, y=simulated_price,
-                        mode='lines+markers',
-                        name=orderbook_name,
-                        line=dict(dash=dash, width=2),
-                        marker=dict(size=6, symbol=marker, line=dict(width=1, color='white')),
-                        showlegend=True,
-                        opacity=1,
-                        hovertemplate='<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>Price: $%{y:.2f}<extra></extra>' if show_hover else None,
+                        x=x, y=market_price,
+                        mode='lines',
+                        name='Actual Market Price',
+                        line=dict(color='black', width=2),
+                        hovertemplate='<b>Actual Market Price</b><br>Time: %{x|%H:%M:%S}<br>Price: $%{y:.2f}<extra></extra>' if show_hover else None,
                         hoverinfo='skip' if not show_hover else None,
                     ))
 
-                # Plot actual market price
-                fig.add_trace(go.Scatter(
-                    x=x, y=market_price,
-                    mode='lines',
-                    name='Actual Market Price',
-                    line=dict(color='black', width=2),
-                    hovertemplate='<b>Actual Market Price</b><br>Time: %{x|%H:%M:%S}<br>Price: $%{y:.2f}<extra></extra>' if show_hover else None,
-                    hoverinfo='skip' if not show_hover else None,
-                ))
+                    # Format layout
+                    title_freq = frequency.replace('min', 'min ')
+                    fig.update_layout(
+                        title=f'{currency.upper()} {title_freq} Simulations Comparison',
+                        title_x=0.5,
+                        title_xanchor='center',
+                        title_font_size=28,
+                        xaxis_title='Timestamp',
+                        yaxis_title=f'{currency.upper()} Price (USDT)',
+                        hovermode='closest',
+                        template='plotly_white',
+                        height=800,
+                        font=dict(size=12, color='black'),
+                        paper_bgcolor='white',
+                        plot_bgcolor='white',
+                        legend=dict(x=0.02, y=0.05, bgcolor='rgba(255, 255, 255, 0.9)', bordercolor='black', borderwidth=1, xanchor='left', yanchor='bottom', font=dict(color='black', size=12)),
+                        title_font_color='black'
+                    )
 
-                # Format layout
-                title_freq = frequency.replace('min', 'min ').upper()
-                fig.update_layout(
-                    title=f'{currency.upper()} {title_freq} Simulations Comparison',
-                    xaxis_title='Timestamp',
-                    yaxis_title=f'{currency.upper()} Price (USDT)',
-                    hovermode='x unified',
-                    template='plotly_white',
-                    height=800,
-                    font=dict(size=12, color='black'),
-                    paper_bgcolor='white',
-                    plot_bgcolor='white',
-                    legend=dict(x=1.02, y=1, bgcolor='rgba(255, 255, 255, 0.9)', bordercolor='black', borderwidth=1, xanchor='left', yanchor='top', font=dict(color='black', size=12)),
-                    title_font_color='black'
-                )
+                    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black')
 
-                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black')
+                    # Set y-axis range: 0 to 1.2 * max market price
+                    max_price = market_price.max()
+                    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black', range=[0, 1.2 * max_price])
 
-                # Set y-axis range: 0 to 1.2 * max market price
-                max_price = market_price.max()
-                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black', range=[0, 1.2 * max_price])
+                    # Display results in placeholder at top
+                    plot_placeholder.plotly_chart(fig, width='stretch')
+                    st.success("Simulation completed!")
 
-                # Display results
-                st.plotly_chart(fig, width='stretch')
-
-                st.success("Simulation completed!")
-
-            except FileNotFoundError:
-                st.error(
-                    f"Pre-processed data not found for {currency.upper()} at {frequency} frequency.\n\n"
-                    f"Available frequencies: Tick, 15s, 30s, 1min\n\n"
-                    f"Please run `python new_code/data_processing.py` to prepare the data."
-                )
-            except Exception as e:
-                st.error(f"Error running simulation: {str(e)}")
+                except FileNotFoundError:
+                    st.error(
+                        f"Pre-processed data not found for {currency.upper()} at {frequency} frequency.\n\n"
+                        f"Available frequencies: Tick, 15s, 30s, 1min\n\n"
+                        f"Please run `python new_code/data_processing.py` to prepare the data."
+                    )
+                except Exception as e:
+                    st.error(f"Error running simulation: {str(e)}")

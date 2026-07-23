@@ -50,9 +50,12 @@
     }
   ],
   "currency": "btc",
-  "frequency": "500ms",
+  "frequency": "1s",
   "lambda_target": false,
   "lambda_value": null,
   "lambda_up": 4.0,
-  "lambda_down": 1.25
+  "lambda_down": 1.25,
+  "show_hover": true,
+  "show_markers": false,
+  "include_baseline": true
 }
