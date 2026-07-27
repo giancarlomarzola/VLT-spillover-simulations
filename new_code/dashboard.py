@@ -1,6 +1,6 @@
 """
 VLT Simulation Dashboard
-Run: 
+Run:
 streamlit run new_code/dashboard.py
 """
 
@@ -66,7 +66,7 @@ def load_defaults():
             return None
     return None
 
-def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline):
+def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline, orderbook_formula, k):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     config = {
         "orderbooks": orderbooks,
@@ -79,11 +79,13 @@ def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, la
         "show_hover": show_hover,
         "show_markers": show_markers,
         "include_baseline": include_baseline,
+        "orderbook_formula": orderbook_formula,
+        "k": k,
     }
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=2)
 
-def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline):
+def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline, orderbook_formula, k):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     defaults = {
         "orderbooks": orderbooks,
@@ -96,6 +98,8 @@ def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_valu
         "show_hover": show_hover,
         "show_markers": show_markers,
         "include_baseline": include_baseline,
+        "orderbook_formula": orderbook_formula,
+        "k": k,
     }
     with open(DEFAULTS_FILE, 'w') as f:
         json.dump(defaults, f, indent=2)
@@ -234,6 +238,29 @@ with st.sidebar:
     st.subheader("Orderbook Selection")
     default_include_baseline = (saved_config.get("include_baseline") if saved_config else None) or (saved_defaults.get("include_baseline") if saved_defaults else True)
     include_baseline = st.checkbox("Include baseline (no orderbook)", value=default_include_baseline, on_change=reset_plot_resample)
+
+    default_orderbook_formula = (saved_config.get("orderbook_formula") if saved_config else None) or (saved_defaults.get("orderbook_formula") if saved_defaults else "linear")
+    orderbook_formula = st.radio(
+        "Slippage formula",
+        ["linear", "curved"],
+        index=0 if default_orderbook_formula == "linear" else 1,
+        horizontal=True,
+        on_change=reset_plot_resample
+    )
+
+    if orderbook_formula == "curved":
+        default_k = (saved_config.get("k") if saved_config else None) or (saved_defaults.get("k") if saved_defaults else 0.3)
+        k = st.slider(
+            "Curvature (k)",
+            min_value=0.01,
+            max_value=1.0,
+            value=default_k,
+            step=0.01,
+            help="Lower k = more convex orderbook curve; k=1 approaches the linear book.",
+            on_change=reset_plot_resample
+        )
+    else:
+        k = None
 
     # Initialize orderbooks list if not exists
     if "orderbooks_list" not in st.session_state:
@@ -404,7 +431,7 @@ with st.sidebar:
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💾 Save as Default", width='stretch'):
-            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline)
+            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline, orderbook_formula, k)
             st.success("Settings saved as default!")
 
     with col2:
@@ -429,7 +456,7 @@ with st.sidebar:
             }
 
     # Save configuration
-    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline)
+    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline, orderbook_formula, k)
 
 # Main content
 if not selected_orderbooks:
@@ -454,7 +481,8 @@ else:
                     results = {}
 
                     # Run simulations
-                    st.info("Orderbook Parameters:")
+                    formula_label = f"curved (k={k})" if orderbook_formula == "curved" else "linear"
+                    st.info(f"Orderbook Parameters (slippage formula: {formula_label}):")
                     for orderbook_name, orderbook in selected_orderbooks.items():
                         if orderbook is not None:
                             depth = orderbook.get('depth')
@@ -481,6 +509,8 @@ else:
                             lambda_up=lambda_up,
                             lambda_down=lambda_down,
                             orderbook=orderbook,
+                            orderbook_formula=orderbook_formula,
+                            k=k,
                             data=binance_data
                         )
                         results[orderbook_name] = result

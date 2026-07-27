@@ -35,7 +35,7 @@ def _as_side_pair(param):
     return (bid, ask)
 
 
-def _slippage(d, depth, spread, width):
+def _linear_slippage(d, depth, spread, width):
     """
     Signed slippage s_t for a trade of size d (in tokens), by inverting the
     piecewise-linear synthetic orderbook f(z). depth/spread/width are each
@@ -55,6 +55,28 @@ def _slippage(d, depth, spread, width):
         s = W
     else:
         s = W if x > D else x * (W - S) / D + S
+    return s if d > 0 else -s
+
+def _curved_slippage(d, depth, spread, width, k):
+    """
+    Signed slippage s_t for a trade of size d (in tokens), by inverting the
+    curved synthetic orderbook f(z) = D * t/(k + (1-k)*t). depth/spread/width/k
+    are each (bid, ask) pairs, so bid- and ask-side books can differ (asymmetric
+    case).
+
+    Note: as with the linear version, this applies the per-side inversion
+    (ask-side D,S,W,k for d>0, bid-side for d<0) as the natural generalisation
+    of a symmetric-book formula — flag if that's not what you intended.
+    """
+    if d == 0:
+        return 0.0
+    D, S, W, K = ((depth[1], spread[1], width[1], k[1]) if d > 0
+                  else (depth[0], spread[0], width[0], k[0]))
+    x = abs(d)
+    if D == 0 or x > D:
+        s = W
+    else:
+        s = S + (W - S) * (K * x) / (D - (1 - K) * x)
     return s if d > 0 else -s
 
 
@@ -92,6 +114,8 @@ def run_simulation(
     lambda_up, # upper boundary
     lambda_down, # lower boundary
     orderbook=None,
+    orderbook_formula="curved", # "linear" or "curved"
+    k=0.3, # curvature param (scalar or (bid, ask) pair); required if orderbook_formula="curved"
     data=None,
     currency=None,
     frequency=None,
@@ -111,12 +135,23 @@ def run_simulation(
     one-period execution lag of eqn 5: a rebalance at t only moves the
     price used at t+1.
 
+    orderbook_formula: "linear" (default) or "curved", selecting which
+    synthetic orderbook inversion is used to compute slippage.
+
+    k: curvature parameter for the curved orderbook, a scalar (symmetric)
+    or (bid, ask) pair (asymmetric). Required when orderbook_formula is
+    "curved"; ignored otherwise.
+
     data: optional pre-loaded DataFrame. If provided, uses this directly.
     Otherwise requires currency and frequency to load pre-processed data.
 
     currency: ticker (e.g., "btc"). Required if data is None.
     frequency: sampling frequency (e.g., "30s", "1min"). Required if data is None.
     """
+    if orderbook_formula not in ("linear", "curved"):
+        raise ValueError(f"orderbook_formula must be 'linear' or 'curved', got {orderbook_formula!r}")
+    if orderbook_formula == "curved" and orderbook is not None and k is None:
+        raise ValueError("k is required when orderbook_formula='curved'")
 
     if data is None:
         if currency is None or frequency is None:
@@ -147,6 +182,8 @@ def run_simulation(
         width_pair = _as_side_pair(orderbook["width"])
         spread = (spread_pair[0] / 100, spread_pair[1] / 100)
         width = (width_pair[0] / 100, width_pair[1] / 100)
+        if orderbook_formula == "curved":
+            k_pair = _as_side_pair(k)
 
     # t = 0: Seed from basket primitives
     for side, omega in _SIDES:
@@ -210,7 +247,10 @@ def run_simulation(
             else:
                 # Execution uncapped: normal slippage
                 scale = 1.0
-                s_t = _slippage(d_target, depth_tokens, spread, width)
+                if orderbook_formula == "curved":
+                    s_t = _curved_slippage(d_target, depth_tokens, spread, width, k_pair)
+                else:
+                    s_t = _linear_slippage(d_target, depth_tokens, spread, width)
         else:
             scale = 1.0
             s_t = 0.0
