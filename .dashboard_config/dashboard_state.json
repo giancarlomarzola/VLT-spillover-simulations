@@ -60,7 +60,7 @@
       "_id": "37018a0d-65a7-4a0a-bcb8-2a9a4211d3f3"
     }
   ],
-  "currency": "btc",
+  "currency": "sushi",
   "frequency": "30s",
   "lambda_target": false,
   "lambda_value": null,

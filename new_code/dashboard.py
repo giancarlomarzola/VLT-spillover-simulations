@@ -462,8 +462,9 @@ with st.sidebar:
 if not selected_orderbooks:
     st.warning("Please select at least one orderbook to run the simulation.")
 else:
-    # Create placeholder for plot at the top
+    # Create placeholders for plots at the top
     plot_placeholder = st.empty()
+    leverage_placeholder = st.empty()
 
     # Run simulation button
     if st.button("Run Simulation", type="primary"):
@@ -518,6 +519,7 @@ else:
                     # Resample data for plotting if requested
                     plot_data = binance_data.copy()
                     resampled_results = {}
+                    rebalance_magnitudes = {}
 
                     if plot_resample_freq != "raw":
                         # Resample binance_data (market price and timestamp)
@@ -529,11 +531,35 @@ else:
                             result_with_ts['timestamp'] = binance_data['timestamp'].values
                             resampled = resample_data(result_with_ts, plot_resample_freq)
                             # Keep only the columns we need
-                            resampled_results[name] = resampled[['timestamp', 'price_multiplier']].reset_index(drop=True)
+                            resampled_results[name] = resampled[
+                                ['timestamp', 'price_multiplier', 'lambdast_up', 'lambdast_down']
+                            ].reset_index(drop=True)
+
+                            # Combined rebalance size = |UP delta| + |DOWN delta|. actual_total_delta is
+                            # the *signed* sum of both sides, which largely cancels since UP and DOWN
+                            # rebalance in opposite directions on the same move — using it produced
+                            # near-zero, sign-flipping spikes. Summing the absolute values per side gives
+                            # the actual combined trade size, always >= 0.
+                            result_with_ts['rebalance_magnitude'] = (
+                                result_with_ts['actual_delta_up'].abs() + result_with_ts['actual_delta_down'].abs()
+                            )
+                            magnitude_by_bucket = (
+                                result_with_ts[['timestamp', 'rebalance_magnitude']]
+                                .set_index('timestamp')
+                                .resample(plot_resample_freq)
+                                .sum()
+                                .reset_index()
+                            )
+                            rebalance_magnitudes[name] = magnitude_by_bucket['rebalance_magnitude'].values
                     else:
                         # For raw data, just extract price_multiplier from each result
                         for name, result in results.items():
-                            resampled_results[name] = result[['price_multiplier']].reset_index(drop=True)
+                            resampled_results[name] = result[
+                                ['price_multiplier', 'lambdast_up', 'lambdast_down']
+                            ].reset_index(drop=True)
+                            rebalance_magnitudes[name] = (
+                                result['actual_delta_up'].abs() + result['actual_delta_down'].abs()
+                            ).values
 
                     # Plot simulations
                     fig = go.Figure()
@@ -543,21 +569,43 @@ else:
                     dash_styles = ['solid', '6 3', '6 3 1 3', 'solid', '6 3', '6 3 1 3', 'solid', '6 3', '6 3 1 3', 'solid']
                     markers = ['circle', 'square', 'triangle-up', 'diamond', 'triangle-down', 'pentagon', 'hexagon', 'cross', 'x', 'star']
                     marker_offsets = [0, 3, 6, 1, 4, 7, 2, 5, 8, 0]
+                    trace_colors = ['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52']
 
-                    for (orderbook_name, result), dash, marker, offset in zip(resampled_results.items(), dash_styles, markers, marker_offsets):
+                    for (orderbook_name, result), dash, marker, offset, color in zip(resampled_results.items(), dash_styles, markers, marker_offsets, trace_colors):
                         simulated_price = market_price * result['price_multiplier'].values
-                        marker_indices = list(range(offset, len(x), 10))
 
                         trace_mode = 'lines+markers' if show_markers else 'lines'
                         fig.add_trace(go.Scatter(
                             x=x, y=simulated_price,
                             mode=trace_mode,
                             name=orderbook_name,
-                            line={"dash": dash, "width": 2},
+                            line={"color": color, "dash": dash, "width": 2},
                             marker={"size": 6, "symbol": marker, "line": {"width": 1, "color": 'white'}} if show_markers else None,
                             showlegend=True,
                             opacity=1,
                             hovertemplate='<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>Price: $%{y:.2f}<extra></extra>' if show_hover else None,
+                            hoverinfo='skip' if not show_hover else None,
+                        ))
+
+                        # Rebalance events for this orderbook, drawn as vertical lines on the
+                        # secondary axis (height = combined |UP|+|DOWN| rebalance size, always >= 0),
+                        # hidden until clicked in their own legend.
+                        rebalance_x, rebalance_y = [], []
+                        for xi, magnitude in zip(x, rebalance_magnitudes[orderbook_name]):
+                            if magnitude > 0 and not pd.isna(magnitude):
+                                rebalance_x += [xi, xi, None]
+                                rebalance_y += [0, magnitude, None]
+
+                        fig.add_trace(go.Scatter(
+                            x=rebalance_x, y=rebalance_y,
+                            mode='lines',
+                            name=f'{orderbook_name} rebalances',
+                            line={"color": color, "width": 2},
+                            yaxis='y2',
+                            legend='legend2',
+                            showlegend=True,
+                            visible='legendonly',
+                            hovertemplate=f'<b>{orderbook_name} rebalance</b><br>Time: %{{x|%H:%M:%S}}<br>Size: $%{{y:,.0f}}<extra></extra>' if show_hover else None,
                             hoverinfo='skip' if not show_hover else None,
                         ))
 
@@ -580,24 +628,88 @@ else:
                         title_font_size=28,
                         xaxis_title='Timestamp',
                         yaxis_title=f'{currency.upper()} Price (USDT)',
+                        yaxis2={"title": "Rebalance Size (USD)", "overlaying": 'y', "side": 'right', "rangemode": 'tozero', "showgrid": False, "zeroline": False, "title_font_color": 'black', "tickfont_color": 'black'},
                         hovermode='closest',
                         template='plotly_white',
                         height=800,
                         font={"size": 12, "color": 'black'},
                         paper_bgcolor='white',
                         plot_bgcolor='white',
-                        legend={"x": 0.02, "y": 0.05, "bgcolor": 'rgba(255, 255, 255, 0.9)', "bordercolor": 'black', "borderwidth": 1, "xanchor": 'left', "yanchor": 'bottom', "font": {"color": 'black', "size": 12}},
+                        legend={"title": "Price", "x": 0.02, "y": 0.02, "bgcolor": 'rgba(255, 255, 255, 0.9)', "bordercolor": 'black', "borderwidth": 1, "xanchor": 'left', "yanchor": 'bottom', "font": {"color": 'black', "size": 12}},
+                        legend2={"title": "Rebalances", "x": 0.98, "y": 0.02, "bgcolor": 'rgba(255, 255, 255, 0.9)', "bordercolor": 'black', "borderwidth": 1, "xanchor": 'right', "yanchor": 'bottom', "font": {"color": 'black', "size": 12}},
                         title_font_color='black'
                     )
 
                     fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black')
 
-                    # Set y-axis range: 0 to 1.2 * max market price
+                    # Set primary y-axis range: 0 to 1.2 * max market price (update_yaxes with no
+                    # selector would also clobber yaxis2, so target the primary axis explicitly)
                     max_price = market_price.max()
-                    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black', range=[0, 1.2 * max_price])
+                    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black', range=[0, 1.2 * max_price], selector={"overlaying": None})
 
                     # Display results in placeholder at top
                     plot_placeholder.plotly_chart(fig, width='stretch')
+
+                    # Plot leverage after rebalance (UP and DOWN in the same plot). Both
+                    # lambdast_up and lambdast_down are stored as positive magnitudes bounded
+                    # in [lambda_down, lambda_up] (the simulation's omega=-1 sign convention on
+                    # the DOWN side exists to make the boundary check symmetric, not to encode
+                    # display sign) — negate DOWN here, for display only, so the two sides split
+                    # cleanly around zero instead of overlapping.
+                    leverage_fig = go.Figure()
+                    for (orderbook_name, result), color in zip(resampled_results.items(), trace_colors):
+                        leverage_fig.add_trace(go.Scatter(
+                            x=x, y=result['lambdast_up'].values,
+                            mode='lines',
+                            name=f'{orderbook_name} UP',
+                            line={"color": color, "width": 2},
+                            hovertemplate='<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>Leverage: %{y:.3f}<extra></extra>' if show_hover else None,
+                            hoverinfo='skip' if not show_hover else None,
+                        ))
+                        leverage_fig.add_trace(go.Scatter(
+                            x=x, y=-result['lambdast_down'].values,
+                            mode='lines',
+                            name=f'{orderbook_name} DOWN',
+                            line={"color": color, "width": 2, "dash": '6 3'},
+                            hovertemplate='<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>Leverage: %{customdata:.3f}<extra></extra>' if show_hover else None,
+                            customdata=result['lambdast_down'].values,
+                            hoverinfo='skip' if not show_hover else None,
+                        ))
+
+                    leverage_fig.update_layout(
+                        title=f'{currency.upper()} {title_freq} Leverage After Rebalance',
+                        title_x=0.5,
+                        title_xanchor='center',
+                        title_font_size=28,
+                        xaxis_title='Timestamp',
+                        yaxis_title='Leverage (λ*)',
+                        hovermode='closest',
+                        template='plotly_white',
+                        height=600,
+                        font={"size": 12, "color": 'black'},
+                        paper_bgcolor='white',
+                        plot_bgcolor='white',
+                        legend={"x": 0.98, "y": 0.02, "bgcolor": 'rgba(255, 255, 255, 0.9)', "bordercolor": 'black', "borderwidth": 1, "xanchor": 'right', "yanchor": 'bottom', "font": {"color": 'black', "size": 12}},
+                        title_font_color='black'
+                    )
+                    leverage_fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black')
+                    leverage_fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black', zeroline=True, zerolinecolor='gray', zerolinewidth=1)
+
+                    # Mark the lambda rebalancing bounds, mirrored to the negative side to match
+                    # the DOWN sign flip above (UP and DOWN share the same lambda_up/lambda_down)
+                    for threshold, label in [(lambda_up, 'λ_up'), (lambda_down, 'λ_down')]:
+                        for sign in (1, -1):
+                            leverage_fig.add_hline(
+                                y=sign * threshold,
+                                line={"color": 'gray', "width": 1, "dash": 'dot'},
+                                annotation_text=f'{label} = {threshold:g}',
+                                annotation_position='top left',
+                                annotation_font_color='gray',
+                                annotation_font_size=11,
+                            )
+
+                    leverage_placeholder.plotly_chart(leverage_fig, width='stretch')
+
                     st.success("Simulation completed!")
 
                 except FileNotFoundError:
