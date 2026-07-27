@@ -1,7 +1,8 @@
 # Imports
-from new_code.price_spillover_simulations import run_simulation
-import plotly.graph_objects as go
 import pandas as pd
+import plotly.graph_objects as go
+
+from new_code.price_spillover_simulations import run_simulation
 
 # Parameters
 currency = "btc"
@@ -73,8 +74,8 @@ if __name__ == "__main__":
             x=x, y=simulated_price,
             mode='lines+markers',
             name=orderbook_name,
-            line=dict(dash=dash, width=2),
-            marker=dict(size=6, symbol=marker, line=dict(width=1, color='white')),
+            line={"dash": dash, "width": 2},
+            marker={"size": 6, "symbol": marker, "line": {"width": 1, "color": 'white'}},
             showlegend=True,
             opacity=1,
             hovertemplate='<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>Price: $%{y:.2f}<extra></extra>' if show_hover_info else None,
@@ -90,7 +91,7 @@ if __name__ == "__main__":
                 x=marker_x, y=marker_y,
                 mode='markers',
                 name=orderbook_name,
-                marker=dict(size=8, symbol=marker, line=dict(width=1, color='white')),
+                marker={"size": 8, "symbol": marker, "line": {"width": 1, "color": 'white'}},
                 showlegend=False,
                 opacity=0.6,
                 hoverinfo='skip' if True else None,
@@ -102,7 +103,7 @@ if __name__ == "__main__":
         x=x, y=market_price,
         mode='lines',
         name='Actual Market Price',
-        line=dict(color='black', width=1.5),
+        line={"color": 'black', "width": 1.5},
         hovertemplate='<b>Actual Market Price</b><br>Time: %{x|%H:%M:%S}<br>Price: $%{y:.2f}<extra></extra>' if show_hover_info else None,
         hoverinfo='skip' if not show_hover_info else None,
         visible=True
@@ -118,8 +119,8 @@ if __name__ == "__main__":
         template='plotly_white',
         width=1400,
         height=700,
-        font=dict(size=12),
-        legend=dict(x=0.01, y=0.99, bgcolor='rgba(255, 255, 255, 0.8)', bordercolor='black', borderwidth=1)
+        font={"size": 12},
+        legend={"x": 0.01, "y": 0.99, "bgcolor": 'rgba(255, 255, 255, 0.8)', "bordercolor": 'black', "borderwidth": 1}
     )
 
     fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')

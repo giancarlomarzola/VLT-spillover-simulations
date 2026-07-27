@@ -3,13 +3,13 @@ import pandas as pd
 
 # (internal_key, output_column_suffix) — order matches the original schema
 _TOKEN_VARS = [
-    ("v", "v"),
-    ("x", "x"),
-    ("x_star", "xst"),
-    ("lam", "lambda"),
-    ("lam_star", "lambdast"),
-    ("target_delta", "target_delta"),
-    ("actual_delta", "actual_delta"),
+    ("v", "v"), # NAV
+    ("x", "x"), # Notional before rebalance
+    ("x_star", "xst"), # Notional after rebalance
+    ("lam", "lambda"), # Leverage before rebalance
+    ("lam_star", "lambdast"), # Leverage after rebalance
+    ("target_delta", "target_delta"), # Target rebalance size
+    ("actual_delta", "actual_delta"), # Actual rebalance size (if capped by orderbook)
 ]
 _SIDES = (("up", 1), ("down", -1))
 
@@ -27,7 +27,8 @@ COL = {name: i for i, name in enumerate(COLUMNS)}
 
 
 def _as_side_pair(param):
-    """Scalar -> symmetric (bid, ask); 2-tuple -> asymmetric (bid, ask) as given."""
+    """ Ensures bid and ask are correctly defined
+    Scalar -> symmetric (bid, ask); 2-tuple -> asymmetric (bid, ask) as given."""
     if np.isscalar(param):
         return (param, param)
     bid, ask = param

@@ -4,8 +4,8 @@ Run:
 streamlit run new_code/dashboard.py
 """
 
-import sys
 import json
+import sys
 import uuid
 from pathlib import Path
 
@@ -13,10 +13,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
-import streamlit as st
 import plotly.graph_objects as go
-from new_code.price_spillover_simulations import run_simulation
+import streamlit as st
+
 from new_code.data_processing import FREQUENCIES
+from new_code.price_spillover_simulations import run_simulation
 
 
 def frequency_to_seconds(freq):
@@ -52,7 +53,7 @@ def load_config():
         try:
             with open(CONFIG_FILE, 'r') as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             return None
     return None
 
@@ -61,7 +62,7 @@ def load_defaults():
         try:
             with open(DEFAULTS_FILE, 'r') as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             return None
     return None
 
@@ -388,16 +389,15 @@ with st.sidebar:
         st.divider()
 
     # Add row button
-    if len(st.session_state.orderbooks_list) < 8:
-        if st.button("+ Add Orderbook", type="primary"):
-            st.session_state.orderbooks_list.append({
-                "_id": str(uuid.uuid4()),
-                "name": f"Orderbook {len(st.session_state.orderbooks_list) + 1}",
-                "depth": 50_000_000,
-                "width": 1.0,
-                "spread": 0.005
-            })
-            st.rerun()
+    if len(st.session_state.orderbooks_list) < 8 and st.button("+ Add Orderbook", type="primary"):
+        st.session_state.orderbooks_list.append({
+            "_id": str(uuid.uuid4()),
+            "name": f"Orderbook {len(st.session_state.orderbooks_list) + 1}",
+            "depth": 50_000_000,
+            "width": 1.0,
+            "spread": 0.005
+        })
+        st.rerun()
 
     # Settings management buttons
     st.divider()
@@ -523,8 +523,8 @@ else:
                             x=x, y=simulated_price,
                             mode=trace_mode,
                             name=orderbook_name,
-                            line=dict(dash=dash, width=2),
-                            marker=dict(size=6, symbol=marker, line=dict(width=1, color='white')) if show_markers else None,
+                            line={"dash": dash, "width": 2},
+                            marker={"size": 6, "symbol": marker, "line": {"width": 1, "color": 'white'}} if show_markers else None,
                             showlegend=True,
                             opacity=1,
                             hovertemplate='<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>Price: $%{y:.2f}<extra></extra>' if show_hover else None,
@@ -536,7 +536,7 @@ else:
                         x=x, y=market_price,
                         mode='lines',
                         name='Actual Market Price',
-                        line=dict(color='black', width=2),
+                        line={"color": 'black', "width": 2},
                         hovertemplate='<b>Actual Market Price</b><br>Time: %{x|%H:%M:%S}<br>Price: $%{y:.2f}<extra></extra>' if show_hover else None,
                         hoverinfo='skip' if not show_hover else None,
                     ))
@@ -553,10 +553,10 @@ else:
                         hovermode='closest',
                         template='plotly_white',
                         height=800,
-                        font=dict(size=12, color='black'),
+                        font={"size": 12, "color": 'black'},
                         paper_bgcolor='white',
                         plot_bgcolor='white',
-                        legend=dict(x=0.02, y=0.05, bgcolor='rgba(255, 255, 255, 0.9)', bordercolor='black', borderwidth=1, xanchor='left', yanchor='bottom', font=dict(color='black', size=12)),
+                        legend={"x": 0.02, "y": 0.05, "bgcolor": 'rgba(255, 255, 255, 0.9)', "bordercolor": 'black', "borderwidth": 1, "xanchor": 'left', "yanchor": 'bottom', "font": {"color": 'black', "size": 12}},
                         title_font_color='black'
                     )
 
@@ -576,5 +576,5 @@ else:
                         f"Available frequencies: Tick, 15s, 30s, 1min\n\n"
                         f"Please run `python new_code/data_processing.py` to prepare the data."
                     )
-                except Exception as e:
-                    st.error(f"Error running simulation: {str(e)}")
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"Error running simulation: {e!s}")

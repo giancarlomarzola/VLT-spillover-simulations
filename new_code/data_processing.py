@@ -1,6 +1,6 @@
-import pandas as pd
 import os
 
+import pandas as pd
 
 # Available data frequencies for simulations
 FREQUENCIES = ["Tick", "50ms", "500ms", "1s", "15s", "30s", "1min"]
@@ -51,7 +51,7 @@ def get_column_names(dataname):
             "data.M": "Ignore",
         }
     else:
-        raise Exception(f"dataname {dataname} in function get_column_names not found")
+        raise Exception(f"dataname {dataname} in function get_column_names not found")  # noqa: TRY002
 
     return Columns
 
@@ -78,7 +78,7 @@ def load_raw_data(filepath, tradevenue, ticker, timestamp, dataname):
         return df
 
     else:
-        raise Exception(f"{filename} doesn't exist in location")
+        raise Exception(f"{filename} doesn't exist in location")  # noqa: TRY002
 
 
 def process_data(df, token_name):
