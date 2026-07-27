@@ -1,6 +1,5 @@
-import pandas as pd
 import numpy as np
-
+import pandas as pd
 
 # (internal_key, output_column_suffix) — order matches the original schema
 _TOKEN_VARS = [
