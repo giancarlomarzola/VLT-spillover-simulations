@@ -7,8 +7,8 @@ from price_spillover_simulations import _as_side_pair
 FIGURES_DIR = Path(__file__).resolve().parent.parent / "Figures"
 
 # Orderbook formula
-orderbook_formula = "linear"  # "linear" or "curved"
-k = 0.5  # curvature parameter (scalar or (bid, ask) pair); only used if orderbook_formula == "curved"
+orderbook_formula = "curved"  # "linear" or "curved"
+k = 0.3  # curvature parameter (scalar or (bid, ask) pair); only used if orderbook_formula == "curved"
 
 # Orderbooks to plot (depth in USD, width/spread in %; each value can be a
 # scalar for a symmetric book or a (bid, ask) pair for an asymmetric one).

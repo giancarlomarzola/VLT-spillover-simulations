@@ -70,5 +70,5 @@
   "show_markers": false,
   "include_baseline": true,
   "orderbook_formula": "curved",
-  "k": 0.48
+  "k": 0.3
 }
