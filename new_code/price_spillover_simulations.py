@@ -261,8 +261,16 @@ def run_simulation(
         for side, omega in _SIDES:
             res = step_results[side]
             res["actual_delta"] = res["target_delta"] * scale
-            res["x_star"] = res["x"] + res["actual_delta"]
-            res["lam_star"] = omega * res["x_star"] / res["v"] if res["v"] > 0 else 0.0
+            if res["v"] > 0:
+                res["x_star"] = res["x"] + res["actual_delta"]
+                res["lam_star"] = omega * res["x_star"] / res["v"]
+            else:
+                # Wiped out: _step_token already zeroed x/x_star for this step's state, so
+                # res["x"] is 0 here — adding actual_delta (the liquidation trade size) on top
+                # of it would resurrect a nonzero x_star out of thin air, which then keeps
+                # producing spurious nonzero deltas every period after. Once dead, stay dead.
+                res["x_star"] = 0.0
+                res["lam_star"] = 0.0
             actual_total_delta += res["actual_delta"]
 
         for side, _ in _SIDES:
