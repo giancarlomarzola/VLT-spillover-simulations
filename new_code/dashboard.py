@@ -66,7 +66,7 @@ def load_defaults():
             return None
     return None
 
-def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline, orderbook_formula, k):
+def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     config = {
         "orderbooks": orderbooks,
@@ -78,6 +78,7 @@ def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, la
         "lambda_down": lambda_down,
         "show_hover": show_hover,
         "show_markers": show_markers,
+        "leverage_timing": leverage_timing,
         "include_baseline": include_baseline,
         "orderbook_formula": orderbook_formula,
         "k": k,
@@ -85,7 +86,7 @@ def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, la
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=2)
 
-def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline, orderbook_formula, k):
+def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     defaults = {
         "orderbooks": orderbooks,
@@ -97,6 +98,7 @@ def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_valu
         "lambda_down": lambda_down,
         "show_hover": show_hover,
         "show_markers": show_markers,
+        "leverage_timing": leverage_timing,
         "include_baseline": include_baseline,
         "orderbook_formula": orderbook_formula,
         "k": k,
@@ -183,6 +185,14 @@ with st.sidebar:
 
     default_show_markers = (saved_config.get("show_markers") if saved_config else None) or (saved_defaults.get("show_markers") if saved_defaults else True)
     show_markers = st.checkbox("Show markers on lines", value=default_show_markers)
+
+    default_leverage_timing = (saved_config.get("leverage_timing") if saved_config else None) or (saved_defaults.get("leverage_timing") if saved_defaults else "After Rebalance")
+    leverage_timing = st.selectbox(
+        "Leverage plot",
+        ["Before Rebalance", "After Rebalance"],
+        index=1 if default_leverage_timing == "After Rebalance" else 0,
+        help="Show leverage (λ) before or after the rebalance trade is applied."
+    )
 
     # Rebalancing parameters
     st.subheader("Rebalancing Strategy")
@@ -431,7 +441,7 @@ with st.sidebar:
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💾 Save as Default", width='stretch'):
-            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline, orderbook_formula, k)
+            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k)
             st.success("Settings saved as default!")
 
     with col2:
@@ -456,7 +466,7 @@ with st.sidebar:
             }
 
     # Save configuration
-    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, include_baseline, orderbook_formula, k)
+    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k)
 
 # Main content
 if not selected_orderbooks:
@@ -532,7 +542,7 @@ else:
                             resampled = resample_data(result_with_ts, plot_resample_freq)
                             # Keep only the columns we need
                             resampled_results[name] = resampled[
-                                ['timestamp', 'price_multiplier', 'lambdast_up', 'lambdast_down']
+                                ['timestamp', 'price_multiplier', 'lambdast_up', 'lambdast_down', 'lambda_up', 'lambda_down']
                             ].reset_index(drop=True)
 
                             # Combined rebalance size = |UP delta| + |DOWN delta|. actual_total_delta is
@@ -555,7 +565,7 @@ else:
                         # For raw data, just extract price_multiplier from each result
                         for name, result in results.items():
                             resampled_results[name] = result[
-                                ['price_multiplier', 'lambdast_up', 'lambdast_down']
+                                ['price_multiplier', 'lambdast_up', 'lambdast_down', 'lambda_up', 'lambda_down']
                             ].reset_index(drop=True)
                             rebalance_magnitudes[name] = (
                                 result['actual_delta_up'].abs() + result['actual_delta_down'].abs()
@@ -637,7 +647,12 @@ else:
                         plot_bgcolor='white',
                         legend={"title": "Price", "x": 0.02, "y": 0.02, "bgcolor": 'rgba(255, 255, 255, 0.9)', "bordercolor": 'black', "borderwidth": 1, "xanchor": 'left', "yanchor": 'bottom', "font": {"color": 'black', "size": 12}},
                         legend2={"title": "Rebalances", "x": 0.98, "y": 0.02, "bgcolor": 'rgba(255, 255, 255, 0.9)', "bordercolor": 'black', "borderwidth": 1, "xanchor": 'right', "yanchor": 'bottom', "font": {"color": 'black', "size": 12}},
-                        title_font_color='black'
+                        title_font_color='black',
+                        # Fixed margins (shared with leverage_fig below) so the plot area is the
+                        # same pixel width in both charts and their x-axes line up when stacked —
+                        # left to automargin, the yaxis2 title/ticks here would widen the right
+                        # margin relative to leverage_fig, which has no secondary axis.
+                        margin={"l": 80, "r": 120, "t": 100, "b": 80},
                     )
 
                     fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black')
@@ -650,16 +665,18 @@ else:
                     # Display results in placeholder at top
                     plot_placeholder.plotly_chart(fig, width='stretch')
 
-                    # Plot leverage after rebalance (UP and DOWN in the same plot). Both
-                    # lambdast_up and lambdast_down are stored as positive magnitudes bounded
-                    # in [lambda_down, lambda_up] (the simulation's omega=-1 sign convention on
+                    # Plot leverage before or after rebalance (UP and DOWN in the same plot),
+                    # per the "Leverage plot" selector. Both the before ("lambda") and after
+                    # ("lambdast") columns are stored as positive magnitudes bounded in
+                    # [lambda_down, lambda_up] (the simulation's omega=-1 sign convention on
                     # the DOWN side exists to make the boundary check symmetric, not to encode
                     # display sign) — negate DOWN here, for display only, so the two sides split
                     # cleanly around zero instead of overlapping.
+                    lev_prefix = 'lambdast' if leverage_timing == "After Rebalance" else 'lambda'
                     leverage_fig = go.Figure()
                     for (orderbook_name, result), color in zip(resampled_results.items(), trace_colors):
                         leverage_fig.add_trace(go.Scatter(
-                            x=x, y=result['lambdast_up'].values,
+                            x=x, y=result[f'{lev_prefix}_up'].values,
                             mode='lines',
                             name=f'{orderbook_name} UP',
                             line={"color": color, "width": 2},
@@ -667,17 +684,17 @@ else:
                             hoverinfo='skip' if not show_hover else None,
                         ))
                         leverage_fig.add_trace(go.Scatter(
-                            x=x, y=-result['lambdast_down'].values,
+                            x=x, y=-result[f'{lev_prefix}_down'].values,
                             mode='lines',
                             name=f'{orderbook_name} DOWN',
                             line={"color": color, "width": 2, "dash": '6 3'},
                             hovertemplate='<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>Leverage: %{customdata:.3f}<extra></extra>' if show_hover else None,
-                            customdata=result['lambdast_down'].values,
+                            customdata=result[f'{lev_prefix}_down'].values,
                             hoverinfo='skip' if not show_hover else None,
                         ))
 
                     leverage_fig.update_layout(
-                        title=f'{currency.upper()} {title_freq} Leverage After Rebalance',
+                        title=f'{currency.upper()} {title_freq} Leverage {leverage_timing}',
                         title_x=0.5,
                         title_xanchor='center',
                         title_font_size=28,
@@ -690,7 +707,8 @@ else:
                         paper_bgcolor='white',
                         plot_bgcolor='white',
                         legend={"x": 0.98, "y": 0.02, "bgcolor": 'rgba(255, 255, 255, 0.9)', "bordercolor": 'black', "borderwidth": 1, "xanchor": 'right', "yanchor": 'bottom', "font": {"color": 'black', "size": 12}},
-                        title_font_color='black'
+                        title_font_color='black',
+                        margin={"l": 80, "r": 120, "t": 100, "b": 80},
                     )
                     leverage_fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black')
                     leverage_fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black', zeroline=True, zerolinecolor='gray', zerolinewidth=1)
@@ -702,7 +720,7 @@ else:
                             leverage_fig.add_hline(
                                 y=sign * threshold,
                                 line={"color": 'gray', "width": 1, "dash": 'dot'},
-                                annotation_text=f'{label} = {threshold:g}',
+                                annotation_text=f'{label} = {sign * threshold:g}',
                                 annotation_position='top left',
                                 annotation_font_color='gray',
                                 annotation_font_size=11,
