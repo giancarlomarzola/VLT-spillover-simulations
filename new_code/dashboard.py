@@ -262,10 +262,10 @@ with st.sidebar:
         default_k = (saved_config.get("k") if saved_config else None) or (saved_defaults.get("k") if saved_defaults else 0.3)
         k = st.slider(
             "Curvature (k)",
-            min_value=0.01,
-            max_value=1.0,
+            min_value=0.1,
+            max_value=10.0,
             value=default_k,
-            step=0.01,
+            step=0.1,
             help="Lower k = more convex orderbook curve; k=1 approaches the linear book.",
             on_change=reset_plot_resample
         )

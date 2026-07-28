@@ -60,7 +60,7 @@
       "_id": "37018a0d-65a7-4a0a-bcb8-2a9a4211d3f3"
     }
   ],
-  "currency": "eth",
+  "currency": "btc",
   "frequency": "30s",
   "lambda_target": false,
   "lambda_value": null,
@@ -71,5 +71,5 @@
   "leverage_timing": "Before Rebalance",
   "include_baseline": true,
   "orderbook_formula": "curved",
-  "k": 0.3
+  "k": 7.0
 }
