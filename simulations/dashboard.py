@@ -17,7 +17,7 @@ import streamlit as st
 
 from functions.data_processing import FREQUENCIES
 from functions.orderbook import Orderbook
-from functions.plot_utils import plot_results, resample_data
+from functions.plot_utils import plot_orderbook_depth, plot_results, resample_data
 from functions.price_spillover_simulations import run_simulation
 
 
@@ -517,6 +517,7 @@ else:
     # Create placeholders for plots at the top
     plot_placeholder = st.empty()
     leverage_placeholder = st.empty()
+    depth_placeholder = st.empty()
 
     # Run simulation button
     if st.button("Run Simulation", type="primary"):
@@ -564,9 +565,12 @@ else:
                             result_with_ts['timestamp'] = binance_data['timestamp'].values
                             resampled = resample_data(result_with_ts, plot_resample_freq)
                             # Keep only the columns we need
-                            resampled_results[name] = resampled[
-                                ['timestamp', 'price_multiplier', 'lambdast_up', 'lambdast_down', 'lambda_up', 'lambda_down']
-                            ].reset_index(drop=True)
+                            cols_to_keep = ['timestamp', 'price_multiplier', 'lambdast_up', 'lambdast_down', 'lambda_up', 'lambda_down']
+                            if 'depth_bid' in resampled.columns:
+                                cols_to_keep.append('depth_bid')
+                            if 'depth_ask' in resampled.columns:
+                                cols_to_keep.append('depth_ask')
+                            resampled_results[name] = resampled[cols_to_keep].reset_index(drop=True)
 
                             # Combined rebalance size = |UP delta| + |DOWN delta|. actual_total_delta is
                             # the *signed* sum of both sides, which largely cancels since UP and DOWN
@@ -587,9 +591,14 @@ else:
                     else:
                         # For raw data, just extract price_multiplier from each result
                         for name, result in results.items():
-                            resampled_results[name] = result[
-                                ['price_multiplier', 'lambdast_up', 'lambdast_down', 'lambda_up', 'lambda_down']
-                            ].reset_index(drop=True)
+                            cols_to_keep = ['price_multiplier', 'lambdast_up', 'lambdast_down', 'lambda_up', 'lambda_down']
+                            if 'depth_bid' in result.columns:
+                                cols_to_keep.append('depth_bid')
+                            if 'depth_ask' in result.columns:
+                                cols_to_keep.append('depth_ask')
+                            result_copy = result[cols_to_keep].reset_index(drop=True)
+                            result_copy['timestamp'] = binance_data['timestamp'].values
+                            resampled_results[name] = result_copy
                             rebalance_magnitudes[name] = (
                                 result['actual_delta_up'].abs() + result['actual_delta_down'].abs()
                             ).values
@@ -620,8 +629,17 @@ else:
                     )
 
                     # Display results in placeholder at top
-                    plot_placeholder.plotly_chart(price_fig, width='stretch')
-                    leverage_placeholder.plotly_chart(leverage_fig, width='stretch')
+                    plot_placeholder.plotly_chart(price_fig, use_container_width=True)
+                    leverage_placeholder.plotly_chart(leverage_fig, use_container_width=True)
+
+                    # Display orderbook depth plot
+                    depth_fig = plot_orderbook_depth(
+                        resampled_results,
+                        x_axis=plot_data['timestamp'].values,
+                        show_hover=show_hover,
+                        title_prefix=title_prefix
+                    )
+                    depth_placeholder.plotly_chart(depth_fig, use_container_width=True)
 
                     st.success("Simulation completed!")
 
