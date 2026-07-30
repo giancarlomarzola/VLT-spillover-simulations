@@ -385,6 +385,7 @@ def plot_results(
             "xanchor": "right",
             "yanchor": "bottom",
             "font": {"color": "black", "size": 12},
+            "tracegroupgap": 0,
         },
         margin={"l": 80, "r": 120, "t": 100, "b": 80},
     )
