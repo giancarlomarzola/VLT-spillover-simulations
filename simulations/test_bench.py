@@ -17,18 +17,67 @@ lambda_lower = 1.25  # lower boundary
 # width and spread in %
 orderbooks = [
     None,
-    Orderbook(name="Deep Narrow Tight", depth=50_000_000, width=1, spread=0.005, k=0.3),
-    Orderbook(name="Deep Narrow Broad", depth=50_000_000, width=1, spread=0.05, k=0.3),
-    Orderbook(name="Deep Wide Tight",   depth=50_000_000, width=10, spread=0.005, k=0.3),
-    Orderbook(name="Shallow Narrow Tight", depth=5_000_000, width=1, spread=0.005, k=0.3),
-    Orderbook(name="Asymmetrical Depth", depth=(30_000_000, 50_000_000), width=1, spread=0.005, k=0.3),
+    Orderbook(
+        name="Deep Narrow Tight",
+        depth_bid=50_000_000,
+        depth_ask=50_000_000,
+        width_bid=1,
+        width_ask=1,
+        spread_bid=0.005,
+        spread_ask=0.005,
+        k_bid=0.3,
+        k_ask=0.3,
+    ),
+    Orderbook(
+        name="Deep Narrow Broad",
+        depth_bid=50_000_000,
+        depth_ask=50_000_000,
+        width_bid=1,
+        width_ask=1,
+        spread_bid=0.05,
+        spread_ask=0.05,
+        k_bid=0.3,
+        k_ask=0.3,
+    ),
+    Orderbook(
+        name="Deep Wide Tight",
+        depth_bid=50_000_000,
+        depth_ask=50_000_000,
+        width_bid=10,
+        width_ask=10,
+        spread_bid=0.005,
+        spread_ask=0.005,
+        k_bid=0.3,
+        k_ask=0.3,
+    ),
+    Orderbook(
+        name="Shallow Narrow Tight",
+        depth_bid=5_000_000,
+        depth_ask=5_000_000,
+        width_bid=1,
+        width_ask=1,
+        spread_bid=0.005,
+        spread_ask=0.005,
+        k_bid=0.3,
+        k_ask=0.3,
+    ),
+    Orderbook(
+        name="Asymmetrical Depth",
+        depth_bid=30_000_000,
+        depth_ask=50_000_000,
+        width_bid=1,
+        width_ask=1,
+        spread_bid=0.005,
+        spread_ask=0.005,
+        k_bid=0.3,
+        k_ask=0.3,
+    ),
 ]
 
 # Display options
 show_hover_info = True
 show_markers = False
 plot_resample_freq = "30s"  # None
-
 
 
 # Load pre-processed data

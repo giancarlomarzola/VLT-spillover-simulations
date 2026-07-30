@@ -27,26 +27,6 @@ def _columns():
 COLUMNS = _columns()
 COL = {name: i for i, name in enumerate(COLUMNS)}
 
-def _slippage(d, depth, spread, width, k):
-    """
-    Signed slippage s_t for a trade of size d (in tokens), by inverting the
-    synthetic orderbook f(z) = D * t/(k + (1-k)*t). depth/spread/width/k
-    are each (bid, ask) pairs, so bid- and ask-side books can differ (asymmetric
-    case).
-    """
-    if d == 0:
-        return 0.0
-    D, S, W, K = (
-        (depth[1], spread[1], width[1], k[1]) if d > 0
-        else (depth[0], spread[0], width[0], k[0])
-        )
-    x = abs(d)
-    if D == 0 or x > D:
-        s = W
-    else:
-        s = S + (W - S) * (K * x) / (D - (1 - K) * x)
-    return s if d > 0 else -s
-
 
 def _step_token(prev, omega, ret, lambda_target, lambda_upper, lambda_lower):
     """Advance one token (UP or DOWN) by one time step."""
@@ -127,11 +107,6 @@ def run_simulation(
     out = np.zeros((n, len(COLUMNS)))
 
     has_orderbook = orderbook is not None
-    if has_orderbook:
-        depth = orderbook.depth
-        spread = orderbook.spread
-        width = orderbook.width
-        k_pair = orderbook.k
 
     # t = 0: Seed from provided params or prepared_data
     if prepared_data is None:
@@ -195,19 +170,22 @@ def run_simulation(
 
         # Execution cap: if net trade exceeds available depth on either side, scale both sides (eqn 14)
         if has_orderbook and target_total != 0 and price[t] * m_prev != 0:
-            d_target = target_total / (price[t] * m_prev)  # trade size, in tokens
-            # Convert USD depth to tokens (the conversion and reconversion cancel exactly)
-            depth_tokens = (depth[0] / (price[t] * m_prev), depth[1] / (price[t] * m_prev))
-            D_side = depth_tokens[1] if d_target > 0 else depth_tokens[0]
+            effective_price = price[t] * m_prev
+            d_target = target_total / effective_price  # trade size, in tokens
+            # Convert USD depth to tokens
+            depth_bid_tokens = orderbook.depth_bid / effective_price
+            depth_ask_tokens = orderbook.depth_ask / effective_price
+            D_side = depth_ask_tokens if d_target > 0 else depth_bid_tokens
 
             if abs(d_target) > D_side:
                 # Execution capped: scale both sides proportionally, price moves by full width (eqn 14, sign-safe)
                 scale = D_side / abs(d_target)
-                s_t = np.sign(d_target) * width[1 if d_target > 0 else 0]  # full width on impact side
+                width = orderbook.width_ask if d_target > 0 else orderbook.width_bid
+                s_t = np.sign(d_target) * width  # full width on impact side
             else:
                 # Execution uncapped: normal slippage
                 scale = 1.0
-                s_t = _slippage(d_target, depth_tokens, spread, width, k_pair)
+                s_t = orderbook.calculate_slippage(d_target, effective_price)
         else:
             scale = 1.0
             s_t = 0.0

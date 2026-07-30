@@ -233,10 +233,10 @@ with st.sidebar:
             st.session_state.orderbooks_list = saved_defaults["orderbooks"]
         else:
             st.session_state.orderbooks_list = [
-                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Tight", "depth": 50_000_000, "width": 1.0, "spread": 0.005, "k": 1},
-                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Broad", "depth": 50_000_000, "width": 1.0, "spread": 0.05, "k": 1},
-                {"_id": str(uuid.uuid4()), "name": "Deep Wide Tight", "depth": 50_000_000, "width": 10.0, "spread": 0.005, "k": 1},
-                {"_id": str(uuid.uuid4()), "name": "Shallow Narrow Tight", "depth": 5_000_000, "width": 1.0, "spread": 0.005, "k": 1},
+                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Tight", "depth_bid": 50_000_000, "depth_ask": 50_000_000, "width_bid": 1.0, "width_ask": 1.0, "spread_bid": 0.005, "spread_ask": 0.005, "k_bid": 1, "k_ask": 1},
+                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Broad", "depth_bid": 50_000_000, "depth_ask": 50_000_000, "width_bid": 1.0, "width_ask": 1.0, "spread_bid": 0.05, "spread_ask": 0.05, "k_bid": 1, "k_ask": 1},
+                {"_id": str(uuid.uuid4()), "name": "Deep Wide Tight", "depth_bid": 50_000_000, "depth_ask": 50_000_000, "width_bid": 10.0, "width_ask": 10.0, "spread_bid": 0.005, "spread_ask": 0.005, "k_bid": 1, "k_ask": 1},
+                {"_id": str(uuid.uuid4()), "name": "Shallow Narrow Tight", "depth_bid": 5_000_000, "depth_ask": 5_000_000, "width_bid": 1.0, "width_ask": 1.0, "spread_bid": 0.005, "spread_ask": 0.005, "k_bid": 1, "k_ask": 1},
             ]
 
     # Display orderbook rows
@@ -276,131 +276,103 @@ with st.sidebar:
                 st.session_state.orderbooks_list = [ob for ob in st.session_state.orderbooks_list if ob.get("_id") != ob_id]
                 st.rerun()
 
-        # Parameters row (Depth, Width, Spread, k)
+        # Parameters row (Depth bid/ask, Width bid/ask, Spread bid/ask, k bid/ask)
         param_col1, param_col2, param_col3, param_col4 = st.columns([1.4, 1.0, 1.0, 0.9])
 
         with param_col1:
             st.markdown("**Depth (M USD)**")
-            # Convert list back to tuple if needed (from JSON deserialization)
-            if isinstance(orderbook["depth"], list):
-                orderbook["depth"] = tuple(orderbook["depth"])
-
-            # Format depth for display in millions (handle both int and tuple)
-            if isinstance(orderbook["depth"], tuple):
-                depth_str = f"{orderbook['depth'][0] / 1_000_000:.1f}, {orderbook['depth'][1] / 1_000_000:.1f}"
-            else:
-                depth_str = f"{orderbook['depth'] / 1_000_000:.1f}"
-
+            depth_bid_val = orderbook.get("depth_bid", 50_000_000) / 1_000_000
+            depth_ask_val = orderbook.get("depth_ask", 50_000_000) / 1_000_000
             depth_input = st.text_input(
                 "Depth",
-                value=depth_str,
+                value=f"{depth_bid_val:.1f}, {depth_ask_val:.1f}",
                 key=f"depth_{ob_id}",
                 label_visibility="collapsed",
-                placeholder="e.g., 50 or 30, 50"
+                placeholder="e.g., 50, 50 (bid, ask)"
             )
 
-            # Parse depth input (handle both single values and tuples), convert from millions
             try:
-                if "," in depth_input:
-                    parts = [int(float(p.strip()) * 1_000_000) for p in depth_input.split(",")]
-                    orderbook["depth"] = tuple(parts) if len(parts) == 2 else parts[0]
-                else:
-                    orderbook["depth"] = int(float(depth_input) * 1_000_000)
+                parts = [float(p.strip()) * 1_000_000 for p in depth_input.split(",")]
+                if len(parts) == 2:
+                    orderbook["depth_bid"] = int(parts[0])
+                    orderbook["depth_ask"] = int(parts[1])
+                elif len(parts) == 1:
+                    orderbook["depth_bid"] = int(parts[0])
+                    orderbook["depth_ask"] = int(parts[0])
             except ValueError:
-                pass  # Keep previous value if parsing fails
+                pass
 
         with param_col2:
             st.markdown("**Width (%)**")
-            # Convert list back to tuple if needed (from JSON deserialization)
-            if isinstance(orderbook["width"], list):
-                orderbook["width"] = tuple(orderbook["width"])
-
-            # Format width for display (handle both float and tuple)
-            if isinstance(orderbook["width"], tuple):
-                width_str = f"{orderbook['width'][0]}, {orderbook['width'][1]}"
-            else:
-                width_str = str(orderbook["width"])
-
+            width_bid_val = orderbook.get("width_bid", 1.0)
+            width_ask_val = orderbook.get("width_ask", 1.0)
             width_input = st.text_input(
                 "Width",
-                value=width_str,
+                value=f"{width_bid_val}, {width_ask_val}",
                 key=f"width_{ob_id}",
                 label_visibility="collapsed",
-                placeholder="e.g., 1 or 0.5, 1"
+                placeholder="e.g., 1, 1 (bid, ask)"
             )
-            st.caption("e.g., 1 = 1%")
+            st.caption("bid, ask (e.g., 1 = 1%)")
 
-            # Parse width input (handle both single values and tuples)
             try:
-                if "," in width_input:
-                    parts = [float(p.strip()) for p in width_input.split(",")]
-                    orderbook["width"] = tuple(parts) if len(parts) == 2 else parts[0]
-                else:
-                    orderbook["width"] = float(width_input)
+                parts = [float(p.strip()) for p in width_input.split(",")]
+                if len(parts) == 2:
+                    orderbook["width_bid"] = parts[0]
+                    orderbook["width_ask"] = parts[1]
+                elif len(parts) == 1:
+                    orderbook["width_bid"] = parts[0]
+                    orderbook["width_ask"] = parts[0]
             except ValueError:
-                pass  # Keep previous value if parsing fails
+                pass
 
         with param_col3:
             st.markdown("**Spread (%)**")
-            # Convert list back to tuple if needed (from JSON deserialization)
-            if isinstance(orderbook["spread"], list):
-                orderbook["spread"] = tuple(orderbook["spread"])
-
-            # Format spread for display (handle both float and tuple)
-            if isinstance(orderbook["spread"], tuple):
-                spread_str = f"{orderbook['spread'][0]}, {orderbook['spread'][1]}"
-            else:
-                spread_str = str(orderbook["spread"])
-
+            spread_bid_val = orderbook.get("spread_bid", 0.005)
+            spread_ask_val = orderbook.get("spread_ask", 0.005)
             spread_input = st.text_input(
                 "Spread",
-                value=spread_str,
+                value=f"{spread_bid_val}, {spread_ask_val}",
                 key=f"spread_{ob_id}",
                 label_visibility="collapsed",
-                placeholder="e.g., 0.005 or 0.003, 0.005"
+                placeholder="e.g., 0.005, 0.005 (bid, ask)"
             )
-            st.caption("e.g., 0.005 = 0.5 bps")
+            st.caption("bid, ask (e.g., 0.005 = 0.5 bps)")
 
-            # Parse spread input (handle both single values and tuples)
             try:
-                if "," in spread_input:
-                    parts = [float(p.strip()) for p in spread_input.split(",")]
-                    orderbook["spread"] = tuple(parts) if len(parts) == 2 else parts[0]
-                else:
-                    orderbook["spread"] = float(spread_input)
+                parts = [float(p.strip()) for p in spread_input.split(",")]
+                if len(parts) == 2:
+                    orderbook["spread_bid"] = parts[0]
+                    orderbook["spread_ask"] = parts[1]
+                elif len(parts) == 1:
+                    orderbook["spread_bid"] = parts[0]
+                    orderbook["spread_ask"] = parts[0]
             except ValueError:
-                pass  # Keep previous value if parsing fails
+                pass
 
         with param_col4:
             st.markdown("**k (Curvature)**")
-            # Convert list back to tuple if needed (from JSON deserialization)
-            if isinstance(orderbook["k"], list):
-                orderbook["k"] = tuple(orderbook["k"])
-
-            # Format k for display (handle both float and tuple)
-            if isinstance(orderbook["k"], tuple):
-                k_str = f"{orderbook['k'][0]}, {orderbook['k'][1]}"
-            else:
-                k_str = str(orderbook["k"])
-
+            k_bid_val = orderbook.get("k_bid", 1)
+            k_ask_val = orderbook.get("k_ask", 1)
             k_input = st.text_input(
                 "k",
-                value=k_str,
+                value=f"{k_bid_val}, {k_ask_val}",
                 key=f"k_{ob_id}",
                 label_visibility="collapsed",
-                placeholder="e.g., 1 or 0.5, 1"
+                placeholder="e.g., 1, 1 (bid, ask)"
             )
-            st.caption("k=1: linear")
+            st.caption("bid, ask (k=1: linear)")
 
-            # Parse k input (handle both single values and tuples)
             try:
-                if "," in k_input:
-                    parts = [float(p.strip()) for p in k_input.split(",")]
-                    orderbook["k"] = tuple(parts) if len(parts) == 2 else parts[0]
-                else:
-                    orderbook["k"] = float(k_input)
+                parts = [float(p.strip()) for p in k_input.split(",")]
+                if len(parts) == 2:
+                    orderbook["k_bid"] = parts[0]
+                    orderbook["k_ask"] = parts[1]
+                elif len(parts) == 1:
+                    orderbook["k_bid"] = parts[0]
+                    orderbook["k_ask"] = parts[0]
             except ValueError:
-                pass  # Keep previous value if parsing fails
+                pass
 
         st.divider()
 
@@ -409,10 +381,14 @@ with st.sidebar:
         st.session_state.orderbooks_list.append({
             "_id": str(uuid.uuid4()),
             "name": f"Orderbook {len(st.session_state.orderbooks_list) + 1}",
-            "depth": 50_000_000,
-            "width": 1.0,
-            "spread": 0.005,
-            "k": 1,
+            "depth_bid": 50_000_000,
+            "depth_ask": 50_000_000,
+            "width_bid": 1.0,
+            "width_ask": 1.0,
+            "spread_bid": 0.005,
+            "spread_ask": 0.005,
+            "k_bid": 1,
+            "k_ask": 1,
         })
         st.rerun()
 
@@ -441,10 +417,14 @@ with st.sidebar:
         if ob_dict["name"]:  # Only include if name is not empty
             ob = Orderbook(
                 name=ob_dict["name"],
-                depth=ob_dict["depth"],
-                width=ob_dict["width"],
-                spread=ob_dict["spread"],
-                k=ob_dict["k"],
+                depth_bid=ob_dict.get("depth_bid", 50_000_000),
+                depth_ask=ob_dict.get("depth_ask", 50_000_000),
+                width_bid=ob_dict.get("width_bid", 1.0),
+                width_ask=ob_dict.get("width_ask", 1.0),
+                spread_bid=ob_dict.get("spread_bid", 0.005),
+                spread_ask=ob_dict.get("spread_ask", 0.005),
+                k_bid=ob_dict.get("k_bid", 1),
+                k_ask=ob_dict.get("k_ask", 1),
             )
             selected_orderbooks[ob.name] = ob
 
@@ -478,24 +458,7 @@ else:
                     st.info("Orderbook Parameters:")
                     for orderbook_name, orderbook in selected_orderbooks.items():
                         if orderbook is not None:
-                            depth = orderbook.depth
-                            width = orderbook.width
-                            spread = orderbook.spread
-                            # Handle tuples
-                            if isinstance(depth, tuple):
-                                depth_display = f"({depth[0]:,}, {depth[1]:,})"
-                            else:
-                                depth_display = f"{depth:,}"
-                            if isinstance(width, tuple):
-                                width_display = f"({width[0]}, {width[1]})"
-                            else:
-                                width_display = f"{width}"
-                            if isinstance(spread, tuple):
-                                spread_display = f"({spread[0]}, {spread[1]})"
-                            else:
-                                spread_display = f"{spread}"
-
-                            st.write(f"**{orderbook_name}** → Depth: {depth_display}, Width: {width_display}, Spread: {spread_display}")
+                            st.write(f"**{orderbook_name}** → Depth: ({orderbook.depth_bid:,}, {orderbook.depth_ask:,}), Width: ({orderbook.width_bid}, {orderbook.width_ask}), Spread: ({orderbook.spread_bid}, {orderbook.spread_ask})")
 
                         result = run_simulation(
                             lambda_target=lambda_value,

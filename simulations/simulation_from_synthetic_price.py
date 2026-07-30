@@ -22,8 +22,28 @@ start_exposure_down = -60_000_000
 # width and spread in %
 orderbooks = [
     None,
-    Orderbook(name="Deep Narrow Tight", depth=50_000_000, width=1, spread=0.005, k=0.5),
-    Orderbook(name="Deep Narrow Broad", depth=50_000_000, width=1, spread=0.05, k=0.5),
+    Orderbook(
+        name="Deep Narrow Tight", 
+        depth_bid=50_000_000, 
+        depth_ask=50_000_000, 
+        width_bid=1, 
+        width_ask=1, 
+        spread_bid=0.005, 
+        spread_ask=0.005, 
+        k_bid=0.5, 
+        k_ask=0.5
+        ),
+    Orderbook(
+        name="Deep Narrow Broad", 
+        depth_bid=50_000_000, 
+        depth_ask=50_000_000, 
+        width_bid=1, 
+        width_ask=1, 
+        spread_bid=0.05, 
+        spread_ask=0.05, 
+        k_bid=0.5, 
+        k_ask=0.5
+        ),
 ]
 
 # Display options
