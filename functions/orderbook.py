@@ -34,7 +34,9 @@ class Orderbook:
             raise TypeError(f"name must be string, got {type(name)}")
 
         self.name = name
-        self.depth_bid = depth_bid
+        self.depth_bid_full = depth_bid  # Original depth
+        self.depth_ask_full = depth_ask
+        self.depth_bid = depth_bid  # Current depth (can be depleted)
         self.depth_ask = depth_ask
         self.width_bid = width_bid
         self.width_ask = width_ask
@@ -45,32 +47,75 @@ class Orderbook:
         self.resilience_bid = resilience_bid
         self.resilience_ask = resilience_ask
 
-    def calculate_slippage(self, d, effective_price):
-        """
-        Calculate signed slippage s_t for a trade of size d (in tokens) at the given
-        effective price, by inverting the synthetic orderbook f(z) = D * t/(k + (1-k)*t).
-        Automatically selects bid side (d < 0) or ask side (d > 0) based on trade direction.
-        """
-        if d == 0:
-            return 0.0
 
-        if d > 0:
+    def _log_parameters(self):
+        """Log orderbook parameters for verification."""
+        print(f"\n{'='*60}")
+        print(f"Orderbook: {self.name}")
+        print(f"{'='*60}")
+        print(f"  Depth (tokens):    bid={self.depth_bid_full:>15,.0f}  ask={self.depth_ask_full:>15,.0f}")
+        print(f"  Width (decimal):   bid={self.width_bid:>15.6f}  ask={self.width_ask:>15.6f}")
+        print(f"  Spread (decimal):  bid={self.spread_bid:>15.6f}  ask={self.spread_ask:>15.6f}")
+        print(f"  Curvature (k):     bid={self.k_bid:>15.6f}  ask={self.k_ask:>15.6f}")
+        print(f"  Resilience:        bid={self.resilience_bid:>15.6f}  ask={self.resilience_ask:>15.6f}")
+        print(f"{'='*60}\n")
+
+    def execute_transaction(self, token_amount, effective_price):
+        """
+        Calculate signed slippage and execution scale for a trade of token_amount at the
+        given effective price, by inverting the synthetic orderbook f(z) = D * t/(k + (1-k)*t).
+        Automatically selects bid side (d < 0) or ask side (d > 0) based on trade direction.
+        Depletes the orderbook depth by the executed amount.
+
+        Returns: (slippage, scale) tuple where scale is the execution cap ratio.
+        """
+        if token_amount == 0:
+            return 0.0, 1.0
+
+        if token_amount > 0:
             D = self.depth_ask / effective_price
             S = self.spread_ask
             W = self.width_ask
             K = self.k_ask
+            side = 'ask'
         else:
             D = self.depth_bid / effective_price
             S = self.spread_bid
             W = self.width_bid
             K = self.k_bid
+            side = 'bid'
 
-        x = abs(d)
+        x = abs(token_amount)
+        actual_execution = min(D, x)  # Amount actually executed given available depth
+        D_remaining = max(0, D - actual_execution)  # Depth remaining after trade
+
         if D == 0 or x > D:
             s = W
+            scale = D / x if x > 0 else 1.0
         else:
-            s = S + (W - S) * (K * x) / (D - (1 - K) * x)
-        return s if d > 0 else -s
+            # Use remaining depth after trade in slippage calculation
+            s = S + (W - S) * (K * x) / (D_remaining - (1 - K) * x)
+            scale = 1.0
+
+        # Deplete the orderbook by converting back to USD and updating tracked depth
+        if side == 'ask':
+            self.depth_ask -= actual_execution * effective_price
+        else:
+            self.depth_bid -= actual_execution * effective_price
+
+        slippage = s if token_amount > 0 else -s
+        return slippage, scale
+
+    def replenish(self, time_delta):
+        """
+        Replenish orderbook depth on both sides between trades.
+        Replenishes by resilience*depth_full per time step, capped at full depth.
+
+        Args:
+            time_delta: Elapsed time since the previous rebalancing trade (Δ)
+        """
+        self.depth_bid = min(self.depth_bid + self.resilience_bid * self.depth_bid_full * time_delta, self.depth_bid_full)
+        self.depth_ask = min(self.depth_ask + self.resilience_ask * self.depth_ask_full * time_delta, self.depth_ask_full)
 
     def __repr__(self):
         k_part = "" if (self.k_bid == 1 and self.k_ask == 1) else f", k_bid={self.k_bid}, k_ask={self.k_ask}"

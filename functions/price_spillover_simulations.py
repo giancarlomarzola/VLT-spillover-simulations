@@ -20,7 +20,7 @@ def _columns():
     cols = []
     for side, _ in _SIDES:
         cols += [f"{suffix}_{side}" for _, suffix in _TOKEN_VARS]
-    cols += ["target_total_delta", "actual_total_delta", "price_multiplier", "orderbook_effect", "raw_price", "simulated_price"]
+    cols += ["target_total_delta", "actual_total_delta", "price_multiplier", "orderbook_effect", "raw_price", "simulated_price", "depth_bid", "depth_ask"]
     return cols
 
 
@@ -145,6 +145,14 @@ def run_simulation(
     out[0, COL["raw_price"]] = price[0]
     out[0, COL["simulated_price"]] = price[0] * 1.0
 
+    # Initialize depth tracking
+    if has_orderbook:
+        out[0, COL["depth_bid"]] = orderbook.depth_bid
+        out[0, COL["depth_ask"]] = orderbook.depth_ask
+    else:
+        out[0, COL["depth_bid"]] = np.nan
+        out[0, COL["depth_ask"]] = np.nan
+
     m_lag = 1.0  # m_{-1}, needed for the eqn 5 lag at t = 1
 
     for t in range(1, n):
@@ -172,23 +180,12 @@ def run_simulation(
         if has_orderbook and target_total != 0 and price[t] * m_prev != 0:
             effective_price = price[t] * m_prev
             d_target = target_total / effective_price  # trade size, in tokens
-            # Convert USD depth to tokens
-            depth_bid_tokens = orderbook.depth_bid / effective_price
-            depth_ask_tokens = orderbook.depth_ask / effective_price
-            D_side = depth_ask_tokens if d_target > 0 else depth_bid_tokens
 
-            if abs(d_target) > D_side:
-                # Execution capped: scale both sides proportionally, price moves by full width (eqn 14, sign-safe)
-                scale = D_side / abs(d_target)
-                width = orderbook.width_ask if d_target > 0 else orderbook.width_bid
-                s_t = np.sign(d_target) * width  # full width on impact side
-            else:
-                # Execution uncapped: normal slippage
-                scale = 1.0
-                s_t = orderbook.calculate_slippage(d_target, effective_price)
+            # Let orderbook handle all slippage logic and execution scaling
+            slippage_t, scale = orderbook.execute_transaction(d_target, effective_price)
         else:
             scale = 1.0
-            s_t = 0.0
+            slippage_t = 0.0
 
         # Apply execution cap and recompute x_star, lam_star post-execution
         # The realised x_star can legitimately end up outside [lambda_down, lambda_up] bounds
@@ -215,14 +212,30 @@ def run_simulation(
 
         out[t, COL["target_total_delta"]] = target_total
         out[t, COL["actual_total_delta"]] = actual_total_delta
-        m_new = (1 + s_t) * m_prev
+        m_new = (1 + slippage_t) * m_prev
         # Clamp to prevent multiplier from going non-positive (would cause NaN/inf in next iteration)
         out[t, COL["price_multiplier"]] = max(m_new, 1e-10)
-        out[t, COL["orderbook_effect"]] = s_t
+        out[t, COL["orderbook_effect"]] = slippage_t
         out[t, COL["raw_price"]] = price[t]
         out[t, COL["simulated_price"]] = price[t] * out[t, COL["price_multiplier"]]
 
+        # Track current orderbook depth
+        if has_orderbook:
+            out[t, COL["depth_bid"]] = orderbook.depth_bid
+            out[t, COL["depth_ask"]] = orderbook.depth_ask
+        else:
+            out[t, COL["depth_bid"]] = np.nan
+            out[t, COL["depth_ask"]] = np.nan
+
         m_lag = m_prev  # becomes m_{t-1}, needed as the lag term at t+1
+
+        # Replenish orderbook depth for next iteration
+        if has_orderbook:
+            if timestamps is not None:
+                time_delta = (timestamps[t] - timestamps[t - 1]) / np.timedelta64(1, 's')  # Convert to seconds
+            else:
+                time_delta = 1.0  # Default to 1 unit of time if no timestamps provided
+            orderbook.replenish(time_delta)
 
     result_df = pd.DataFrame(out, columns=COLUMNS)
     if timestamps is not None:

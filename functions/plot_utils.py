@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 TRACE_COLORS = [
     "#636EFA",
@@ -425,3 +426,164 @@ def plot_results(
             )
 
     return price_fig, leverage_fig
+
+
+def plot_orderbook_depth(
+    results_dict,
+    x_axis=None,
+    show_hover=True,
+    title_prefix="",
+    resample_freq=None,
+):
+    """Plot bid and ask depth over time from simulation results in two subplots.
+
+    Args:
+        results_dict: Dict of result dataframes (must contain 'depth_bid' and 'depth_ask' columns)
+        x_axis: X-axis values (if None, uses list of indices). Should be timestamps.
+        show_hover: Whether to show hover info
+        title_prefix: Prefix for plot title (e.g., "BTC 30s")
+        resample_freq: Resample frequency (e.g., '30s', '1min', '15min'). None = no resampling.
+
+    Returns:
+        Plotly figure object
+    """
+    first_df = next(iter(results_dict.values()))
+    if "timestamp" in first_df.columns:
+        result_timestamps = first_df["timestamp"].values
+        if x_axis is None:
+            x_axis = result_timestamps
+
+    # Resample data if requested
+    if resample_freq and resample_freq != "raw" and x_axis is not None and len(x_axis) > 0:
+        resampled_results_dict = {}
+        for name, df in results_dict.items():
+            df_temp = df.copy()
+            if "timestamp" in df_temp.columns:
+                df_temp["timestamp"] = pd.to_datetime(df_temp["timestamp"], utc=True)
+                df_temp.set_index("timestamp", inplace=True)
+            else:
+                df_temp["timestamp"] = pd.to_datetime(x_axis, utc=True)
+                df_temp.set_index("timestamp", inplace=True)
+            df_resampled = df_temp.resample(resample_freq).last()
+            resampled_results_dict[name] = df_resampled.reset_index(drop=True)
+
+        results_dict = resampled_results_dict
+        temp_df = pd.DataFrame({"timestamp": x_axis})
+        temp_df["timestamp"] = pd.to_datetime(temp_df["timestamp"], utc=True)
+        temp_df.set_index("timestamp", inplace=True)
+        resampled = temp_df.resample(resample_freq).last()
+        x_axis = resampled.index.values
+
+    first_df = next(iter(results_dict.values()))
+    if x_axis is None:
+        x_axis = list(range(len(first_df)))
+
+    # Create subplots: 2 rows, 1 column
+    depth_fig = make_subplots(
+        rows=2,
+        cols=1,
+        subplot_titles=("Bid Depth", "Ask Depth"),
+        shared_xaxes=True,
+        vertical_spacing=0.12,
+    )
+
+    for idx, (name, df) in enumerate(results_dict.items()):
+        color = TRACE_COLORS[idx % len(TRACE_COLORS)]
+
+        # Check if depth columns exist
+        if "depth_bid" not in df.columns or "depth_ask" not in df.columns:
+            continue
+
+        # Plot bid depth (row 1)
+        depth_fig.add_trace(
+            go.Scatter(
+                x=x_axis,
+                y=df["depth_bid"].values,
+                mode="lines",
+                name=name,
+                line={"color": color, "width": 2},
+                legendgroup=name,
+                hovertemplate=(
+                    f"<b>{name} Bid</b><br>Time: %{{x|%H:%M:%S}}<br>Depth: $%{{y:,.0f}}<extra></extra>"
+                    if show_hover
+                    else None
+                ),
+                hoverinfo="skip" if not show_hover else None,
+            ),
+            row=1,
+            col=1,
+        )
+
+        # Plot ask depth (row 2)
+        depth_fig.add_trace(
+            go.Scatter(
+                x=x_axis,
+                y=df["depth_ask"].values,
+                mode="lines",
+                name=name,
+                line={"color": color, "width": 2},
+                legendgroup=name,
+                showlegend=False,
+                hovertemplate=(
+                    f"<b>{name} Ask</b><br>Time: %{{x|%H:%M:%S}}<br>Depth: $%{{y:,.0f}}<extra></extra>"
+                    if show_hover
+                    else None
+                ),
+                hoverinfo="skip" if not show_hover else None,
+            ),
+            row=2,
+            col=1,
+        )
+
+    depth_fig.update_layout(
+        title=(
+            f"{title_prefix} Orderbook Depth Over Time"
+            if title_prefix
+            else "Orderbook Depth Over Time"
+        ),
+        title_x=0.5,
+        title_xanchor="center",
+        title_font_size=28,
+        hovermode="closest",
+        template="plotly_white",
+        height=800,
+        font={"size": 12, "color": "black"},
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        legend={
+            "x": 0.02,
+            "y": 0.98,
+            "bgcolor": "rgba(255, 255, 255, 0.9)",
+            "bordercolor": "black",
+            "borderwidth": 1,
+            "xanchor": "left",
+            "yanchor": "top",
+            "font": {"color": "black", "size": 12},
+        },
+        margin={"l": 80, "r": 80, "t": 100, "b": 80},
+    )
+
+    # Update x-axes
+    depth_fig.update_xaxes(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor="lightgray",
+        title_font_color="black",
+        tickfont_color="black",
+        title_text="Timestamp",
+        row=2,
+        col=1,
+    )
+
+    # Update y-axes
+    depth_fig.update_yaxes(
+        showgrid=True,
+        gridwidth=1,
+        gridcolor="lightgray",
+        title_font_color="black",
+        tickfont_color="black",
+        title_text="Depth (USD)",
+        rangemode="tozero",
+    )
+
+    return depth_fig
