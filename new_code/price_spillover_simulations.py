@@ -18,7 +18,7 @@ def _columns():
     cols = []
     for side, _ in _SIDES:
         cols += [f"{suffix}_{side}" for _, suffix in _TOKEN_VARS]
-    cols += ["target_total_delta", "actual_total_delta", "price_multiplier", "orderbook_effect"]
+    cols += ["target_total_delta", "actual_total_delta", "price_multiplier", "orderbook_effect", "raw_price", "simulated_price"]
     return cols
 
 
@@ -214,6 +214,8 @@ def run_simulation(
         out[0, COL[f"lambda_{side}"]] = lam_0_star
         out[0, COL[f"lambdast_{side}"]] = lam_0_star
     out[0, COL["price_multiplier"]] = 1.0
+    out[0, COL["raw_price"]] = price[0]
+    out[0, COL["simulated_price"]] = price[0] * 1.0
 
     m_lag = 1.0  # m_{-1}, needed for the eqn 5 lag at t = 1
 
@@ -289,6 +291,8 @@ def run_simulation(
         # Clamp to prevent multiplier from going non-positive (would cause NaN/inf in next iteration)
         out[t, COL["price_multiplier"]] = max(m_new, 1e-10)
         out[t, COL["orderbook_effect"]] = s_t
+        out[t, COL["raw_price"]] = price[t]
+        out[t, COL["simulated_price"]] = price[t] * out[t, COL["price_multiplier"]]
 
         m_lag = m_prev  # becomes m_{t-1}, needed as the lag term at t+1
 
