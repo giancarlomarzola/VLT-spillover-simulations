@@ -13,10 +13,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 from new_code.data_processing import FREQUENCIES
+from new_code.plot_utils import plot_results
 from new_code.price_spillover_simulations import run_simulation
 
 
@@ -571,161 +571,33 @@ else:
                                 result['actual_delta_up'].abs() + result['actual_delta_down'].abs()
                             ).values
 
-                    # Plot simulations
-                    fig = go.Figure()
-                    x = plot_data['timestamp'].values
-                    market_price = plot_data['price'].values
-
-                    dash_styles = ['solid', '6 3', '6 3 1 3', 'solid', '6 3', '6 3 1 3', 'solid', '6 3', '6 3 1 3', 'solid']
-                    markers = ['circle', 'square', 'triangle-up', 'diamond', 'triangle-down', 'pentagon', 'hexagon', 'cross', 'x', 'star']
-                    marker_offsets = [0, 3, 6, 1, 4, 7, 2, 5, 8, 0]
-                    trace_colors = ['#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FFA15A', '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52']
-
-                    for (orderbook_name, result), dash, marker, offset, color in zip(resampled_results.items(), dash_styles, markers, marker_offsets, trace_colors):
-                        simulated_price = market_price * result['price_multiplier'].values
-
-                        trace_mode = 'lines+markers' if show_markers else 'lines'
-                        fig.add_trace(go.Scatter(
-                            x=x, y=simulated_price,
-                            mode=trace_mode,
-                            name=orderbook_name,
-                            line={"color": color, "dash": dash, "width": 2},
-                            marker={"size": 6, "symbol": marker, "line": {"width": 1, "color": 'white'}} if show_markers else None,
-                            showlegend=True,
-                            opacity=1,
-                            hovertemplate='<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>Price: $%{y:.2f}<extra></extra>' if show_hover else None,
-                            hoverinfo='skip' if not show_hover else None,
-                        ))
-
-                        # Rebalance events for this orderbook, drawn as vertical lines on the
-                        # secondary axis (height = combined |UP|+|DOWN| rebalance size, always >= 0),
-                        # hidden until clicked in their own legend.
-                        rebalance_x, rebalance_y = [], []
-                        for xi, magnitude in zip(x, rebalance_magnitudes[orderbook_name]):
-                            if magnitude > 0 and not pd.isna(magnitude):
-                                rebalance_x += [xi, xi, None]
-                                rebalance_y += [0, magnitude, None]
-
-                        fig.add_trace(go.Scatter(
-                            x=rebalance_x, y=rebalance_y,
-                            mode='lines',
-                            name=f'{orderbook_name} rebalances',
-                            line={"color": color, "width": 2},
-                            yaxis='y2',
-                            legend='legend2',
-                            showlegend=True,
-                            visible='legendonly',
-                            hovertemplate=f'<b>{orderbook_name} rebalance</b><br>Time: %{{x|%H:%M:%S}}<br>Size: $%{{y:,.0f}}<extra></extra>' if show_hover else None,
-                            hoverinfo='skip' if not show_hover else None,
-                        ))
-
-                    # Plot actual market price
-                    fig.add_trace(go.Scatter(
-                        x=x, y=market_price,
-                        mode='lines',
-                        name='Actual Market Price',
-                        line={"color": 'black', "width": 2},
-                        hovertemplate='<b>Actual Market Price</b><br>Time: %{x|%H:%M:%S}<br>Price: $%{y:.2f}<extra></extra>' if show_hover else None,
-                        hoverinfo='skip' if not show_hover else None,
-                    ))
-
-                    # Format layout
+                    # Plot simulations using shared plotting utility
                     title_freq = frequency.replace('min', 'min ')
-                    fig.update_layout(
-                        title=f'{currency.upper()} {title_freq} Simulations Comparison',
-                        title_x=0.5,
-                        title_xanchor='center',
-                        title_font_size=28,
-                        xaxis_title='Timestamp',
-                        yaxis_title=f'{currency.upper()} Price (USDT)',
-                        yaxis2={"title": "Rebalance Size (USD)", "overlaying": 'y', "side": 'right', "rangemode": 'tozero', "showgrid": False, "zeroline": False, "title_font_color": 'black', "tickfont_color": 'black'},
-                        hovermode='closest',
-                        template='plotly_white',
-                        height=800,
-                        font={"size": 12, "color": 'black'},
-                        paper_bgcolor='white',
-                        plot_bgcolor='white',
-                        legend={"title": "Price", "x": 0.02, "y": 0.02, "bgcolor": 'rgba(255, 255, 255, 0.9)', "bordercolor": 'black', "borderwidth": 1, "xanchor": 'left', "yanchor": 'bottom', "font": {"color": 'black', "size": 12}},
-                        legend2={"title": "Rebalances", "x": 0.98, "y": 0.02, "bgcolor": 'rgba(255, 255, 255, 0.9)', "bordercolor": 'black', "borderwidth": 1, "xanchor": 'right', "yanchor": 'bottom', "font": {"color": 'black', "size": 12}},
-                        title_font_color='black',
-                        # Fixed margins (shared with leverage_fig below) so the plot area is the
-                        # same pixel width in both charts and their x-axes line up when stacked —
-                        # left to automargin, the yaxis2 title/ticks here would widen the right
-                        # margin relative to leverage_fig, which has no secondary axis.
-                        margin={"l": 80, "r": 120, "t": 100, "b": 80},
+                    title_prefix = f'{currency.upper()} {title_freq}'
+
+                    # Prepare data for plotting: convert price_multiplier to simulated_price
+                    plot_results_dict = {}
+                    for name, result in resampled_results.items():
+                        plot_result = result.copy()
+                        plot_result['simulated_price'] = plot_data['price'].values * result['price_multiplier'].values
+                        plot_results_dict[name] = plot_result
+
+                    price_fig, leverage_fig = plot_results(
+                        plot_results_dict,
+                        market_price=plot_data['price'].values,
+                        x_axis=plot_data['timestamp'].values,
+                        lambda_upper=lambda_upper,
+                        lambda_lower=lambda_lower,
+                        show_hover=show_hover,
+                        show_markers=show_markers,
+                        leverage_timing=leverage_timing,
+                        title_prefix=title_prefix,
+                        rebalance_magnitudes=rebalance_magnitudes,
+                        currency=currency.upper()
                     )
-
-                    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black')
-
-                    # Set primary y-axis range: 0 to 1.2 * max market price (update_yaxes with no
-                    # selector would also clobber yaxis2, so target the primary axis explicitly)
-                    max_price = market_price.max()
-                    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black', range=[0, 1.2 * max_price], selector={"overlaying": None})
 
                     # Display results in placeholder at top
-                    plot_placeholder.plotly_chart(fig, width='stretch')
-
-                    # Plot leverage before or after rebalance (UP and DOWN in the same plot),
-                    # per the "Leverage plot" selector. Both the before ("lambda") and after
-                    # ("lambdast") columns are stored as positive magnitudes bounded in
-                    # [lambda_down, lambda_up] (the simulation's omega=-1 sign convention on
-                    # the DOWN side exists to make the boundary check symmetric, not to encode
-                    # display sign) — negate DOWN here, for display only, so the two sides split
-                    # cleanly around zero instead of overlapping.
-                    lev_prefix = 'lambdast' if leverage_timing == "After Rebalance" else 'lambda'
-                    leverage_fig = go.Figure()
-                    for (orderbook_name, result), color in zip(resampled_results.items(), trace_colors):
-                        leverage_fig.add_trace(go.Scatter(
-                            x=x, y=result[f'{lev_prefix}_up'].values,
-                            mode='lines',
-                            name=f'{orderbook_name} UP',
-                            line={"color": color, "width": 2},
-                            hovertemplate='<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>Leverage: %{y:.3f}<extra></extra>' if show_hover else None,
-                            hoverinfo='skip' if not show_hover else None,
-                        ))
-                        leverage_fig.add_trace(go.Scatter(
-                            x=x, y=-result[f'{lev_prefix}_down'].values,
-                            mode='lines',
-                            name=f'{orderbook_name} DOWN',
-                            line={"color": color, "width": 2, "dash": '6 3'},
-                            hovertemplate='<b>%{fullData.name}</b><br>Time: %{x|%H:%M:%S}<br>Leverage: %{customdata:.3f}<extra></extra>' if show_hover else None,
-                            customdata=result[f'{lev_prefix}_down'].values,
-                            hoverinfo='skip' if not show_hover else None,
-                        ))
-
-                    leverage_fig.update_layout(
-                        title=f'{currency.upper()} {title_freq} Leverage {leverage_timing}',
-                        title_x=0.5,
-                        title_xanchor='center',
-                        title_font_size=28,
-                        xaxis_title='Timestamp',
-                        yaxis_title='Leverage (λ*)',
-                        hovermode='closest',
-                        template='plotly_white',
-                        height=600,
-                        font={"size": 12, "color": 'black'},
-                        paper_bgcolor='white',
-                        plot_bgcolor='white',
-                        legend={"x": 0.98, "y": 0.02, "bgcolor": 'rgba(255, 255, 255, 0.9)', "bordercolor": 'black', "borderwidth": 1, "xanchor": 'right', "yanchor": 'bottom', "font": {"color": 'black', "size": 12}},
-                        title_font_color='black',
-                        margin={"l": 80, "r": 120, "t": 100, "b": 80},
-                    )
-                    leverage_fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black')
-                    leverage_fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black', zeroline=True, zerolinecolor='gray', zerolinewidth=1)
-
-                    # Mark the lambda rebalancing bounds, mirrored to the negative side to match
-                    # the DOWN sign flip above (UP and DOWN share the same lambda_upper/lambda_lower)
-                    for threshold, label in [(lambda_upper, 'λ_upper'), (lambda_lower, 'λ_lower')]:
-                        for sign in (1, -1):
-                            leverage_fig.add_hline(
-                                y=sign * threshold,
-                                line={"color": 'gray', "width": 1, "dash": 'dot'},
-                                annotation_text=f'{label} = {sign * threshold:g}',
-                                annotation_position='top left',
-                                annotation_font_color='gray',
-                                annotation_font_size=11,
-                            )
-
+                    plot_placeholder.plotly_chart(price_fig, width='stretch')
                     leverage_placeholder.plotly_chart(leverage_fig, width='stretch')
 
                     st.success("Simulation completed!")
