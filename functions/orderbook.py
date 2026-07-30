@@ -87,14 +87,13 @@ class Orderbook:
 
         x = abs(token_amount)
         actual_execution = min(D, x)  # Amount actually executed given available depth
-        D_remaining = max(0, D - actual_execution)  # Depth remaining after trade
 
         if D == 0 or x > D:
             s = W
             scale = D / x if x > 0 else 1.0
         else:
-            # Use remaining depth after trade in slippage calculation
-            s = S + (W - S) * (K * x) / (D_remaining - (1 - K) * x)
+            # Slippage formula: use full depth D, not D_remaining
+            s = S + (W - S) * (K * x) / (D - (1 - K) * x)
             scale = 1.0
 
         # Deplete the orderbook by converting back to USD and updating tracked depth
