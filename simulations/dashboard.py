@@ -56,7 +56,7 @@ def load_defaults():
             return None
     return None
 
-def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline):
+def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, k_curvature, resilience):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     config = {
         "orderbooks": orderbooks,
@@ -70,11 +70,13 @@ def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, la
         "show_markers": show_markers,
         "leverage_timing": leverage_timing,
         "include_baseline": include_baseline,
+        "k_curvature": k_curvature,
+        "resilience": resilience,
     }
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=2)
 
-def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline):
+def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, k_curvature, resilience):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     defaults = {
         "orderbooks": orderbooks,
@@ -88,6 +90,8 @@ def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_valu
         "show_markers": show_markers,
         "leverage_timing": leverage_timing,
         "include_baseline": include_baseline,
+        "k_curvature": k_curvature,
+        "resilience": resilience,
     }
     with open(DEFAULTS_FILE, 'w') as f:
         json.dump(defaults, f, indent=2)
@@ -222,6 +226,28 @@ with st.sidebar:
 
     # Orderbook selection
     st.subheader("Orderbook Selection")
+
+    # Global k curvature and resilience sliders
+    default_k = (saved_config.get("k_curvature") if saved_config else None) or (saved_defaults.get("k_curvature") if saved_defaults else 1.0)
+    k_curvature = st.slider(
+        "k Curvature (applies to all orderbooks)",
+        min_value=0.0,
+        max_value=10.0,
+        value=default_k,
+        step=0.1,
+        help="k=1: linear slippage. Lower k: more convex (less slippage near zero). Higher k: more concave."
+    )
+
+    default_resilience = (saved_config.get("resilience") if saved_config else None) or (saved_defaults.get("resilience") if saved_defaults else 1.0)
+    resilience = st.slider(
+        "Resilience (applies to all orderbooks)",
+        min_value=0.0,
+        max_value=1.0,
+        value=default_resilience,
+        step=0.01,
+        help="0: no resilience (orderbook doesn't recover). 1: perfect resilience."
+    )
+
     default_include_baseline = (saved_config.get("include_baseline") if saved_config else None) or (saved_defaults.get("include_baseline") if saved_defaults else True)
     include_baseline = st.checkbox("Include baseline (no orderbook)", value=default_include_baseline, on_change=reset_plot_resample)
 
@@ -246,7 +272,7 @@ with st.sidebar:
             orderbook["_id"] = ob_id
 
         # Name row with reorder and delete buttons
-        col0, col1, col2, col3, col4 = st.columns([0.4, 4.6, 0.8, 0.8, 0.8])
+        col0, col1, col2, col3, col4 = st.columns([0.4, 2.5, 0.8, 0.8, 0.8])
         with col0:
             st.markdown(f"**{idx + 1}**")
         with col1:
@@ -276,103 +302,142 @@ with st.sidebar:
                 st.session_state.orderbooks_list = [ob for ob in st.session_state.orderbooks_list if ob.get("_id") != ob_id]
                 st.rerun()
 
-        # Parameters row (Depth bid/ask, Width bid/ask, Spread bid/ask, k bid/ask)
-        param_col1, param_col2, param_col3, param_col4 = st.columns([1.4, 1.0, 1.0, 0.9])
+        # Asymmetrical checkbox row (below name, left-aligned)
+        is_asymmetrical = st.checkbox(
+            "Asymmetrical Orderbook",
+            value=orderbook.get("asymmetrical", False),
+            key=f"asymmetrical_{ob_id}"
+        )
+        orderbook["asymmetrical"] = is_asymmetrical
 
-        with param_col1:
-            st.markdown("**Depth (M USD)**")
-            depth_bid_val = orderbook.get("depth_bid", 50_000_000) / 1_000_000
-            depth_ask_val = orderbook.get("depth_ask", 50_000_000) / 1_000_000
-            depth_input = st.text_input(
-                "Depth",
-                value=f"{depth_bid_val:.1f}, {depth_ask_val:.1f}",
-                key=f"depth_{ob_id}",
-                label_visibility="collapsed",
-                placeholder="e.g., 50, 50 (bid, ask)"
-            )
+        # Parameters row (single value for both bid/ask) - only show if symmetric
+        if not is_asymmetrical:
+            param_col1, param_col2, param_col3 = st.columns([1.12, 0.8, 0.8])
 
-            try:
-                parts = [float(p.strip()) * 1_000_000 for p in depth_input.split(",")]
-                if len(parts) == 2:
-                    orderbook["depth_bid"] = int(parts[0])
-                    orderbook["depth_ask"] = int(parts[1])
-                elif len(parts) == 1:
-                    orderbook["depth_bid"] = int(parts[0])
-                    orderbook["depth_ask"] = int(parts[0])
-            except ValueError:
-                pass
+            with param_col1:
+                st.markdown("**Depth (M USD)**")
+                depth_val = orderbook.get("depth_bid", 50_000_000) / 1_000_000
+                depth_input = st.number_input(
+                    "Depth",
+                    value=depth_val,
+                    min_value=0.0,
+                    step=1.0,
+                    key=f"depth_{ob_id}",
+                    label_visibility="collapsed"
+                )
+                orderbook["depth_bid"] = int(depth_input * 1_000_000)
+                orderbook["depth_ask"] = int(depth_input * 1_000_000)
 
-        with param_col2:
-            st.markdown("**Width (%)**")
-            width_bid_val = orderbook.get("width_bid", 1.0)
-            width_ask_val = orderbook.get("width_ask", 1.0)
-            width_input = st.text_input(
-                "Width",
-                value=f"{width_bid_val}, {width_ask_val}",
-                key=f"width_{ob_id}",
-                label_visibility="collapsed",
-                placeholder="e.g., 1, 1 (bid, ask)"
-            )
-            st.caption("bid, ask (e.g., 1 = 1%)")
+            with param_col2:
+                st.markdown("**Width (%)**")
+                width_val = orderbook.get("width_bid", 1.0)
+                width_input = st.number_input(
+                    "Width",
+                    value=width_val,
+                    step=0.1,
+                    key=f"width_{ob_id}",
+                    label_visibility="collapsed"
+                )
+                orderbook["width_bid"] = width_input
+                orderbook["width_ask"] = width_input
 
-            try:
-                parts = [float(p.strip()) for p in width_input.split(",")]
-                if len(parts) == 2:
-                    orderbook["width_bid"] = parts[0]
-                    orderbook["width_ask"] = parts[1]
-                elif len(parts) == 1:
-                    orderbook["width_bid"] = parts[0]
-                    orderbook["width_ask"] = parts[0]
-            except ValueError:
-                pass
+            with param_col3:
+                st.markdown("**Spread (%)**")
+                spread_val = orderbook.get("spread_bid", 0.005)
+                spread_input = st.number_input(
+                    "Spread",
+                    value=spread_val,
+                    step=0.0001,
+                    format="%.3f",
+                    key=f"spread_{ob_id}",
+                    label_visibility="collapsed"
+                )
+                orderbook["spread_bid"] = spread_input
+                orderbook["spread_ask"] = spread_input
 
-        with param_col3:
-            st.markdown("**Spread (%)**")
-            spread_bid_val = orderbook.get("spread_bid", 0.005)
-            spread_ask_val = orderbook.get("spread_ask", 0.005)
-            spread_input = st.text_input(
-                "Spread",
-                value=f"{spread_bid_val}, {spread_ask_val}",
-                key=f"spread_{ob_id}",
-                label_visibility="collapsed",
-                placeholder="e.g., 0.005, 0.005 (bid, ask)"
-            )
-            st.caption("bid, ask (e.g., 0.005 = 0.5 bps)")
+        # Asymmetrical parameters row (separate bid/ask inputs)
+        if is_asymmetrical:
+            st.markdown("**Separate Bid/Ask Parameters**")
+            asym_col1, asym_col2, asym_col3 = st.columns([1.12, 0.8, 0.8])
 
-            try:
-                parts = [float(p.strip()) for p in spread_input.split(",")]
-                if len(parts) == 2:
-                    orderbook["spread_bid"] = parts[0]
-                    orderbook["spread_ask"] = parts[1]
-                elif len(parts) == 1:
-                    orderbook["spread_bid"] = parts[0]
-                    orderbook["spread_ask"] = parts[0]
-            except ValueError:
-                pass
+            with asym_col1:
+                st.markdown("**Depth (M USD)**")
+                depth_bid_col, depth_ask_col = st.columns(2)
+                with depth_bid_col:
+                    depth_bid_val = orderbook.get("depth_bid", 50_000_000) / 1_000_000
+                    depth_bid_input = st.number_input(
+                        "Depth Bid",
+                        value=depth_bid_val,
+                        min_value=0.0,
+                        step=1.0,
+                        key=f"depth_bid_asym_{ob_id}",
+                        label_visibility="collapsed"
+                    )
+                    orderbook["depth_bid"] = int(depth_bid_input * 1_000_000)
+                with depth_ask_col:
+                    depth_ask_val = orderbook.get("depth_ask", 50_000_000) / 1_000_000
+                    depth_ask_input = st.number_input(
+                        "Depth Ask",
+                        value=depth_ask_val,
+                        min_value=0.0,
+                        step=1.0,
+                        key=f"depth_ask_asym_{ob_id}",
+                        label_visibility="collapsed"
+                    )
+                    orderbook["depth_ask"] = int(depth_ask_input * 1_000_000)
+                st.caption("bid     |     ask")
 
-        with param_col4:
-            st.markdown("**k (Curvature)**")
-            k_bid_val = orderbook.get("k_bid", 1)
-            k_ask_val = orderbook.get("k_ask", 1)
-            k_input = st.text_input(
-                "k",
-                value=f"{k_bid_val}, {k_ask_val}",
-                key=f"k_{ob_id}",
-                label_visibility="collapsed",
-                placeholder="e.g., 1, 1 (bid, ask)"
-            )
-            st.caption("bid, ask (k=1: linear)")
+            with asym_col2:
+                st.markdown("**Width (%)**")
+                width_bid_col, width_ask_col = st.columns(2)
+                with width_bid_col:
+                    width_bid_val = orderbook.get("width_bid", 1.0)
+                    width_bid_input = st.number_input(
+                        "Width Bid",
+                        value=width_bid_val,
+                        step=0.1,
+                        key=f"width_bid_asym_{ob_id}",
+                        label_visibility="collapsed"
+                    )
+                    orderbook["width_bid"] = width_bid_input
+                with width_ask_col:
+                    width_ask_val = orderbook.get("width_ask", 1.0)
+                    width_ask_input = st.number_input(
+                        "Width Ask",
+                        value=width_ask_val,
+                        step=0.1,
+                        key=f"width_ask_asym_{ob_id}",
+                        label_visibility="collapsed"
+                    )
+                    orderbook["width_ask"] = width_ask_input
+                st.caption("bid     |     ask")
 
-            try:
-                parts = [float(p.strip()) for p in k_input.split(",")]
-                if len(parts) == 2:
-                    orderbook["k_bid"] = parts[0]
-                    orderbook["k_ask"] = parts[1]
-                elif len(parts) == 1:
-                    orderbook["k_bid"] = parts[0]
-                    orderbook["k_ask"] = parts[0]
-            except ValueError:
-                pass
+            with asym_col3:
+                st.markdown("**Spread (%)**")
+                spread_bid_col, spread_ask_col = st.columns(2)
+                with spread_bid_col:
+                    spread_bid_val = orderbook.get("spread_bid", 0.005)
+                    spread_bid_input = st.number_input(
+                        "Spread Bid",
+                        value=spread_bid_val,
+                        step=0.0001,
+                        format="%.6f",
+                        key=f"spread_bid_asym_{ob_id}",
+                        label_visibility="collapsed"
+                    )
+                    orderbook["spread_bid"] = spread_bid_input
+                with spread_ask_col:
+                    spread_ask_val = orderbook.get("spread_ask", 0.005)
+                    spread_ask_input = st.number_input(
+                        "Spread Ask",
+                        value=spread_ask_val,
+                        step=0.0001,
+                        format="%.6f",
+                        key=f"spread_ask_asym_{ob_id}",
+                        label_visibility="collapsed"
+                    )
+                    orderbook["spread_ask"] = spread_ask_input
+                st.caption("bid     |     ask")
 
         st.divider()
 
@@ -397,7 +462,7 @@ with st.sidebar:
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💾 Save as Default", width='stretch'):
-            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline)
+            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, k_curvature, resilience)
             st.success("Settings saved as default!")
 
     with col2:
@@ -423,13 +488,15 @@ with st.sidebar:
                 width_ask=ob_dict.get("width_ask", 1.0),
                 spread_bid=ob_dict.get("spread_bid", 0.005),
                 spread_ask=ob_dict.get("spread_ask", 0.005),
-                k_bid=ob_dict.get("k_bid", 1),
-                k_ask=ob_dict.get("k_ask", 1),
+                k_bid=k_curvature,
+                k_ask=k_curvature,
+                resilience_bid=resilience,
+                resilience_ask=resilience,
             )
             selected_orderbooks[ob.name] = ob
 
     # Save configuration
-    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline)
+    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, k_curvature, resilience)
 
 # Main content
 if not selected_orderbooks:

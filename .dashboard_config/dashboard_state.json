@@ -13,8 +13,9 @@
       "width_ask": 1.0,
       "spread_bid": 0.005,
       "spread_ask": 0.005,
-      "k_bid": 1.0,
-      "k_ask": 1.0
+      "k_bid": 0.3,
+      "k_ask": 0.3,
+      "asymmetrical": false
     },
     {
       "name": "Deep Narrow Broad",
@@ -27,10 +28,11 @@
       "depth_ask": 50000000,
       "width_bid": 1.0,
       "width_ask": 1.0,
-      "spread_bid": 0.005,
-      "spread_ask": 0.005,
-      "k_bid": 1.0,
-      "k_ask": 1.0
+      "spread_bid": 0.05,
+      "spread_ask": 0.05,
+      "k_bid": 0.3,
+      "k_ask": 0.3,
+      "asymmetrical": false
     },
     {
       "name": "Deep Wide Tight",
@@ -41,12 +43,13 @@
       "k": 1.0,
       "depth_bid": 50000000,
       "depth_ask": 50000000,
-      "width_bid": 1.0,
-      "width_ask": 1.0,
+      "width_bid": 10.0,
+      "width_ask": 10.0,
       "spread_bid": 0.005,
       "spread_ask": 0.005,
-      "k_bid": 1.0,
-      "k_ask": 1.0
+      "k_bid": 0.3,
+      "k_ask": 0.3,
+      "asymmetrical": false
     },
     {
       "_id": "f8312d13-2abe-4eb8-9c8c-90b93c0f9902",
@@ -57,12 +60,13 @@
       "k": 1.0,
       "depth_bid": 50000000,
       "depth_ask": 50000000,
-      "width_bid": 1.0,
-      "width_ask": 1.0,
-      "spread_bid": 0.005,
-      "spread_ask": 0.005,
-      "k_bid": 1.0,
-      "k_ask": 1.0
+      "width_bid": 10.0,
+      "width_ask": 10.0,
+      "spread_bid": 0.05,
+      "spread_ask": 0.05,
+      "k_bid": 0.3,
+      "k_ask": 0.3,
+      "asymmetrical": false
     },
     {
       "name": "Shallow Narrow Tight",
@@ -71,14 +75,15 @@
       "spread": 0.005,
       "_id": "141947ca-487a-4684-a49b-a0cac4658952",
       "k": 1.0,
-      "depth_bid": 50000000,
-      "depth_ask": 50000000,
+      "depth_bid": 25000000,
+      "depth_ask": 25000000,
       "width_bid": 1.0,
       "width_ask": 1.0,
       "spread_bid": 0.005,
       "spread_ask": 0.005,
-      "k_bid": 1.0,
-      "k_ask": 1.0
+      "k_bid": 0.3,
+      "k_ask": 0.3,
+      "asymmetrical": false
     },
     {
       "_id": "89e4bf84-d089-4905-83c9-57884f15c642",
@@ -87,14 +92,15 @@
       "width": 2.0,
       "spread": 0.005,
       "k": 1.0,
-      "depth_bid": 50000000,
-      "depth_ask": 50000000,
-      "width_bid": 1.0,
-      "width_ask": 1.0,
+      "depth_bid": 25000000,
+      "depth_ask": 25000000,
+      "width_bid": 10.0,
+      "width_ask": 10.0,
       "spread_bid": 0.005,
       "spread_ask": 0.005,
-      "k_bid": 1.0,
-      "k_ask": 1.0
+      "k_bid": 0.3,
+      "k_ask": 0.3,
+      "asymmetrical": false
     },
     {
       "_id": "fdc26d31-5f2e-46c2-ab69-50d53a7a2a87",
@@ -103,14 +109,15 @@
       "width": 2.0,
       "spread": 0.05,
       "k": 1.0,
-      "depth_bid": 50000000,
-      "depth_ask": 50000000,
-      "width_bid": 1.0,
-      "width_ask": 1.0,
-      "spread_bid": 0.005,
-      "spread_ask": 0.005,
-      "k_bid": 1.0,
-      "k_ask": 1.0
+      "depth_bid": 25000000,
+      "depth_ask": 25000000,
+      "width_bid": 10.0,
+      "width_ask": 10.0,
+      "spread_bid": 0.05,
+      "spread_ask": 0.05,
+      "k_bid": 0.3,
+      "k_ask": 0.3,
+      "asymmetrical": false
     },
     {
       "name": "Asymmetrical",
@@ -122,14 +129,15 @@
       "spread": 0.005,
       "_id": "37018a0d-65a7-4a0a-bcb8-2a9a4211d3f3",
       "k": 1.0,
-      "depth_bid": 50000000,
+      "depth_bid": 30000000,
       "depth_ask": 50000000,
       "width_bid": 1.0,
       "width_ask": 1.0,
       "spread_bid": 0.005,
       "spread_ask": 0.005,
       "k_bid": 1.0,
-      "k_ask": 1.0
+      "k_ask": 1.0,
+      "asymmetrical": true
     }
   ],
   "currency": "btc",
@@ -141,5 +149,7 @@
   "show_hover": true,
   "show_markers": false,
   "leverage_timing": "Before Rebalance",
-  "include_baseline": true
+  "include_baseline": true,
+  "k_curvature": 0.3,
+  "resilience": 1.0
 }
