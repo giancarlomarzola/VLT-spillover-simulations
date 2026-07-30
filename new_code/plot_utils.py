@@ -348,7 +348,7 @@ def plot_results(
                     name=name,
                     legendgroup=name,
                     showlegend=False,
-                    line={"color": color, "width": 2, "dash": "dash"},
+                    line={"color": color, "width": 2},
                     customdata=df[down_col].values,
                     hovertemplate=(
                         f"<b>{name} DOWN</b><br>Time: %{{x|%H:%M:%S}}<br>Leverage: %{{customdata:.3f}}<extra></extra>"
