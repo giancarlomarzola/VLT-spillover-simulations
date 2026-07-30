@@ -80,7 +80,7 @@ def _curved_slippage(d, depth, spread, width, k):
     return s if d > 0 else -s
 
 
-def _step_token(prev, omega, ret, lambda_target, lambda_up, lambda_down):
+def _step_token(prev, omega, ret, lambda_target, lambda_upper, lambda_lower):
     """Advance one token (UP or DOWN) by one time step."""
     v = prev["v"] * (1 + omega * prev["lam_star"] * ret)
     x = prev["x_star"] * (1 + ret)
@@ -93,10 +93,10 @@ def _step_token(prev, omega, ret, lambda_target, lambda_up, lambda_down):
 
     lam = omega * x / v
 
-    if lambda_down <= lam <= lambda_up:
+    if lambda_lower <= lam <= lambda_upper:
         x_star = x
     elif lambda_target is None:
-        target_lambda = lambda_down if lam <= lambda_down else lambda_up
+        target_lambda = lambda_lower if lam <= lambda_lower else lambda_upper
         x_star = omega * v * target_lambda
     else:
         x_star = omega * v * lambda_target
@@ -111,22 +111,25 @@ def _step_token(prev, omega, ret, lambda_target, lambda_up, lambda_down):
 
 def run_simulation(
     lambda_target, # None = boundary rebalancing, float = target rebalancing
-    lambda_up, # upper boundary
-    lambda_down, # lower boundary
+    lambda_upper, # upper boundary
+    lambda_lower, # lower boundary
     orderbook=None,
     orderbook_formula="curved", # "linear" or "curved"
     k=0.3, # curvature param (scalar or (bid, ask) pair); required if orderbook_formula="curved"
-    data=None,
-    currency=None,
-    frequency=None,
+    prepared_data=None,
+    price_series=None,
+    start_nav_up=None,
+    start_exposure_up=None,
+    start_nav_down=None,
+    start_exposure_down=None,
     ):
     """
     Simulate a pair of variable-leverage UP/DOWN tokens through time.
 
     lambda_target: None uses boundary rebalancing (snap to upper/lower bound),
     any float uses target rebalancing (rebalance to that target leverage).
-    lambda_up: upper boundary
-    lambda_down: lower boundary
+    lambda_upper: upper boundary
+    lambda_lower: lower boundary
 
     orderbook: dict with keys "depth", "spread", "width", each a scalar
     (symmetric book) or a (bid, ask) pair (asymmetric book), in the units
@@ -142,35 +145,27 @@ def run_simulation(
     or (bid, ask) pair (asymmetric). Required when orderbook_formula is
     "curved"; ignored otherwise.
 
-    data: optional pre-loaded DataFrame. If provided, uses this directly.
-    Otherwise requires currency and frequency to load pre-processed data.
+    prepared_data: optional pre-loaded DataFrame with price and basket primitives.
+    If provided, uses this directly and ignores price_series/start_* params.
 
-    currency: ticker (e.g., "btc"). Required if data is None.
-    frequency: sampling frequency (e.g., "30s", "1min"). Required if data is None.
+    price_series: price time series (array-like). Required if data is None.
+    start_nav_up: initial NAV of UP token.
+    start_exposure_up: initial notional exposure of UP token.
+    start_nav_down: initial NAV of DOWN token.
+    start_exposure_down: initial notional exposure of DOWN token.
     """
     if orderbook_formula not in ("linear", "curved"):
         raise ValueError(f"orderbook_formula must be 'linear' or 'curved', got {orderbook_formula!r}")
     if orderbook_formula == "curved" and orderbook is not None and k is None:
         raise ValueError("k is required when orderbook_formula='curved'")
 
-    if data is None:
-        if currency is None or frequency is None:
-            raise ValueError("Must provide either 'data' or both 'currency' and 'frequency'")
-
-        filepath = f"dissertation_data/token_dataframes/{currency}_{frequency}_processed.parquet"
-        try:
-            df = pd.read_parquet(filepath)
-            df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-        except FileNotFoundError:
-            raise FileNotFoundError(
-                f"Pre-processed data not found: {filepath}\n"
-                f"Run data_processing.py to prepare {currency} data at {frequency} frequency."
-            )
+    if prepared_data is None:
+        if price_series is None or any(x is None for x in [start_nav_up, start_exposure_up, start_nav_down, start_exposure_down]):
+            raise ValueError("Must provide either 'prepared_data' or all of: price_series, start_nav_up, start_exposure_up, start_nav_down, start_exposure_down")
+        price = np.asarray(price_series, dtype=float)
     else:
-        df = data
-
-    # Get initial
-    price = np.asarray(df["price"].values, dtype=float)
+        price = np.asarray(prepared_data["price"].values, dtype=float)
+        df = prepared_data
 
     n = len(price)
     out = np.zeros((n, len(COLUMNS)))
@@ -185,23 +180,33 @@ def run_simulation(
         if orderbook_formula == "curved":
             k_pair = _as_side_pair(k)
 
-    # t = 0: Seed from basket primitives
+    # t = 0: Seed from provided params or prepared_data
+    if prepared_data is None:
+        # Use provided initial values
+        initial_values = {
+            "up": (start_nav_up, start_exposure_up),
+            "down": (start_nav_down, start_exposure_down)
+        }
+
     for side, omega in _SIDES:
-        if side == "up":
-            v0 = df["nTokensUP"].iloc[0] * df["up_price"].iloc[0]   # investment in basket currency
-            x_star_0 = df["BasketUP"].iloc[0] * df["price"].iloc[0]  # already signed
+        if prepared_data is None:
+            v0, x_star_0 = initial_values[side]
         else:
-            v0 = df["nTokensDOWN"].iloc[0] * df["down_price"].iloc[0]
-            x_star_0 = df["BasketDOWN"].iloc[0] * df["price"].iloc[0]  # already signed
+            if side == "up":
+                v0 = df["nTokensUP"].iloc[0] * df["up_price"].iloc[0]   # investment in basket currency
+                x_star_0 = df["BasketUP"].iloc[0] * df["price"].iloc[0]  # already signed
+            else:
+                v0 = df["nTokensDOWN"].iloc[0] * df["down_price"].iloc[0]
+                x_star_0 = df["BasketDOWN"].iloc[0] * df["price"].iloc[0]  # already signed
 
         # Compute initial leverage from basket
         lam_0_star = omega * x_star_0 / v0 if v0 > 0 else 0.0
 
-        # Apply initial leverage bounds check (eqn 13): if lam_0* outside [lambda_down, lambda_up], reset to bound
-        if lam_0_star < lambda_down:
-            lam_0_star = lambda_down
-        elif lam_0_star > lambda_up:
-            lam_0_star = lambda_up
+        # Apply initial leverage bounds check (eqn 13): if lam_0* outside [lambda_lower, lambda_upper], reset to bound
+        if lam_0_star < lambda_lower:
+            lam_0_star = lambda_lower
+        elif lam_0_star > lambda_upper:
+            lam_0_star = lambda_upper
 
         out[0, COL[f"v_{side}"]] = v0
         out[0, COL[f"x_{side}"]] = x_star_0
@@ -229,7 +234,7 @@ def run_simulation(
         step_results = {}
         for side, omega in _SIDES:
             prev = {key: out[t - 1, COL[f"{suffix}_{side}"]] for key, suffix in _TOKEN_VARS}
-            res = _step_token(prev, omega, ret, lambda_target, lambda_up, lambda_down)
+            res = _step_token(prev, omega, ret, lambda_target, lambda_upper, lambda_lower)
             step_results[side] = res
             target_total += res["target_delta"]
 

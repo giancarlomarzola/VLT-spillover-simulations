@@ -9,8 +9,8 @@ currency = "btc"
 frequency = "15s"
 
 lambda_target = None  # None = boundary rebalancing, float = target rebalancing
-lambda_up = 4  # upper boundary
-lambda_down = 1.25  # lower boundary
+lambda_upper = 4  # upper boundary
+lambda_lower = 1.25  # lower boundary
 
 # Orderbooks
 # width and spread in %
@@ -52,8 +52,8 @@ if __name__ == "__main__":
         print(f"Running simulation for {orderbook_name}")
         result = run_simulation(
             lambda_target=lambda_target,
-            lambda_up=lambda_up,
-            lambda_down=lambda_down,
+            lambda_upper=lambda_upper,
+            lambda_lower=lambda_lower,
             orderbook=orderbook,
             orderbook_formula=orderbook_formula,
             k=k,

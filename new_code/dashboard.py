@@ -66,7 +66,7 @@ def load_defaults():
             return None
     return None
 
-def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k):
+def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     config = {
         "orderbooks": orderbooks,
@@ -74,8 +74,8 @@ def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, la
         "frequency": frequency,
         "lambda_target": lambda_target,
         "lambda_value": lambda_value,
-        "lambda_up": lambda_up,
-        "lambda_down": lambda_down,
+        "lambda_upper": lambda_upper,
+        "lambda_lower": lambda_lower,
         "show_hover": show_hover,
         "show_markers": show_markers,
         "leverage_timing": leverage_timing,
@@ -86,7 +86,7 @@ def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, la
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=2)
 
-def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k):
+def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     defaults = {
         "orderbooks": orderbooks,
@@ -94,8 +94,8 @@ def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_valu
         "frequency": frequency,
         "lambda_target": lambda_target,
         "lambda_value": lambda_value,
-        "lambda_up": lambda_up,
-        "lambda_down": lambda_down,
+        "lambda_upper": lambda_upper,
+        "lambda_lower": lambda_lower,
         "show_hover": show_hover,
         "show_markers": show_markers,
         "leverage_timing": leverage_timing,
@@ -198,8 +198,8 @@ with st.sidebar:
     st.subheader("Rebalancing Strategy")
     default_lambda_target = (saved_config.get("lambda_target") if saved_config else None) or (saved_defaults.get("lambda_target") if saved_defaults else False)
     default_lambda_value = (saved_config.get("lambda_value") if saved_config else None) or (saved_defaults.get("lambda_value") if saved_defaults else 1.5)
-    default_lambda_up = (saved_config.get("lambda_up") if saved_config else None) or (saved_defaults.get("lambda_up") if saved_defaults else 4.0)
-    default_lambda_down = (saved_config.get("lambda_down") if saved_config else None) or (saved_defaults.get("lambda_down") if saved_defaults else 1.25)
+    default_lambda_upper = (saved_config.get("lambda_upper") if saved_config else None) or (saved_defaults.get("lambda_upper") if saved_defaults else 4.0)
+    default_lambda_lower = (saved_config.get("lambda_lower") if saved_config else None) or (saved_defaults.get("lambda_lower") if saved_defaults else 1.25)
 
     # Strategy toggle
     rebalancing_mode = st.radio(
@@ -228,17 +228,17 @@ with st.sidebar:
     bound_col1, bound_col2 = st.columns(2)
 
     with bound_col1:
-        lambda_down = st.number_input(
+        lambda_lower = st.number_input(
             "Lower boundary",
-            value=default_lambda_down,
+            value=default_lambda_lower,
             min_value=0.1,
             max_value=10.0,
             step=0.01
         )
     with bound_col2:
-        lambda_up = st.number_input(
+        lambda_upper = st.number_input(
             "Upper boundary",
-            value=default_lambda_up,
+            value=default_lambda_upper,
             min_value=0.1,
             max_value=10.0,
             step=0.01
@@ -441,7 +441,7 @@ with st.sidebar:
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💾 Save as Default", width='stretch'):
-            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k)
+            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k)
             st.success("Settings saved as default!")
 
     with col2:
@@ -466,7 +466,7 @@ with st.sidebar:
             }
 
     # Save configuration
-    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_up, lambda_down, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k)
+    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k)
 
 # Main content
 if not selected_orderbooks:
@@ -517,8 +517,8 @@ else:
 
                         result = run_simulation(
                             lambda_target=lambda_value,
-                            lambda_up=lambda_up,
-                            lambda_down=lambda_down,
+                            lambda_upper=lambda_upper,
+                            lambda_lower=lambda_lower,
                             orderbook=orderbook,
                             orderbook_formula=orderbook_formula,
                             k=k,
@@ -714,8 +714,8 @@ else:
                     leverage_fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray', title_font_color='black', tickfont_color='black', zeroline=True, zerolinecolor='gray', zerolinewidth=1)
 
                     # Mark the lambda rebalancing bounds, mirrored to the negative side to match
-                    # the DOWN sign flip above (UP and DOWN share the same lambda_up/lambda_down)
-                    for threshold, label in [(lambda_up, 'λ_up'), (lambda_down, 'λ_down')]:
+                    # the DOWN sign flip above (UP and DOWN share the same lambda_upper/lambda_lower)
+                    for threshold, label in [(lambda_upper, 'λ_upper'), (lambda_lower, 'λ_lower')]:
                         for sign in (1, -1):
                             leverage_fig.add_hline(
                                 y=sign * threshold,
