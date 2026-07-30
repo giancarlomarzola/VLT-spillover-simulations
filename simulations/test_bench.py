@@ -19,7 +19,7 @@ resilience = 0.2
 # Display options
 show_hover_info = True
 show_markers = False
-plot_resample_freq = '30s'  # None
+plot_resample_freq = None
 leverage_timing = 'After Rebalance' # 'Before Rebalance'
 
 
@@ -150,10 +150,9 @@ leverage_fig.show()
 
 # Plot orderbook depth over time (if orderbooks were used)
 print("\nPlotting orderbook depth")
-orderbook_results = {name: df for name, df in results.items() if name != "No Orderbook"}
-if orderbook_results:
+if any(name != "No Orderbook" for name in results):
     depth_fig = plot_orderbook_depth(
-        orderbook_results,
+        results,
         x_axis=binance_data["timestamp"].values,
         show_hover=show_hover_info,
         title_prefix=title_prefix,

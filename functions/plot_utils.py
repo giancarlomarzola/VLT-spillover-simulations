@@ -488,6 +488,10 @@ def plot_orderbook_depth(
     )
 
     for idx, (name, df) in enumerate(results_dict.items()):
+        # Skip "No Orderbook" result
+        if name == "No Orderbook":
+            continue
+
         color = TRACE_COLORS[idx % len(TRACE_COLORS)]
 
         # Check if depth columns exist
@@ -559,6 +563,7 @@ def plot_orderbook_depth(
             "xanchor": "left",
             "yanchor": "top",
             "font": {"color": "black", "size": 12},
+            "tracegroupgap": 0,
         },
         margin={"l": 80, "r": 80, "t": 100, "b": 80},
     )

@@ -151,5 +151,5 @@
   "leverage_timing": "Before Rebalance",
   "include_baseline": true,
   "k_curvature": 0.3,
-  "resilience": 1.0
+  "resilience": 0.2
 }
