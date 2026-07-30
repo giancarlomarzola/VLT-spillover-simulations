@@ -1,48 +1,11 @@
+import math
 import random
 from datetime import UTC, datetime
 
 import pandas as pd
 
-from new_code.plot_utils import plot_results
-from new_code.price_spillover_simulations import run_simulation
-
-
-# Random price series - to be substituted later
-def generate_price_series(start_price=100, start_time=None, end_time=None, freq="1min", volatility=0.001):
-    """
-    Generate a price series with timestamps.
-
-    Args:
-        start_price: Initial price
-        start_time: Start datetime (e.g., datetime(2024, 1, 1))
-        end_time: End datetime (e.g., datetime(2024, 1, 10))
-        freq: Pandas frequency string (e.g., "1min", "5min", "1H")
-        volatility: Random return volatility
-
-    Returns:
-        tuple: (timestamps, prices) where both are lists
-    """
-
-    if start_time is None or end_time is None:
-        raise ValueError("start_time and end_time must be provided")
-
-    timestamps = pd.date_range(start=start_time, end=end_time, freq=freq).tolist()
-    prices = [start_price]
-
-    for _ in range(len(timestamps) - 1):
-        ret = random.uniform(-volatility, volatility)
-        prices.append(round(prices[-1] * (1+ret), 2))
-
-    return timestamps, prices
-
-
-timestamps, price_series = generate_price_series(
-    start_price=50_000,
-    start_time=datetime(2024, 1, 18, 12, 0, tzinfo=UTC),
-    end_time=datetime(2024, 1, 18, 14, 0, tzinfo=UTC),
-    freq="50ms"
-)
-
+from functions.plot_utils import plot_results
+from functions.price_spillover_simulations import run_simulation
 
 lambda_target = None  # None = boundary rebalancing, float = target rebalancing
 lambda_upper = 4  # upper boundary
@@ -69,6 +32,56 @@ orderbooks = {
 show_hover_info = True
 show_markers = False
 plot_resample_freq = "30s"  # None
+
+
+# Random price series - to be substituted later
+def generate_price_series(start_price=100, start_time=None, end_time=None, freq="1min", volatility=0.01):
+    """
+    Generate a price series with timestamps.
+
+    Args:
+        start_price: Initial price
+        start_time: Start datetime (e.g., datetime(2024, 1, 1))
+        end_time: End datetime (e.g., datetime(2024, 1, 10))
+        freq: Pandas frequency string (e.g., "1min", "5min", "1H")
+        volatility: Annual volatility
+
+    Returns:
+        tuple: (timestamps, prices) where both are lists
+    """
+
+    if start_time is None or end_time is None:
+        raise ValueError("start_time and end_time must be provided")
+
+    timestamps = pd.date_range(start=start_time, end=end_time, freq=freq).tolist()
+
+    # Convert pandas frequency to seconds
+    time_delta = pd.Timedelta(freq)
+    time_step_seconds = time_delta.total_seconds()
+
+    # Convert to years (assuming 252 trading days per year)
+    time_step_years = time_step_seconds / (252 * 24 * 60 * 60)
+
+    # Adjust volatility from annual to frequency
+    adjusted_volatility = volatility * math.sqrt(time_step_years)
+
+    prices = [start_price]
+
+    for _ in range(len(timestamps) - 1):
+        ret = random.uniform(-adjusted_volatility, adjusted_volatility)
+        prices.append(round(prices[-1] * (1+ret), 2))
+
+    return timestamps, prices
+
+
+timestamps, price_series = generate_price_series(
+    start_price=50_000,
+    start_time=datetime(2024, 1, 18, 12, 0, tzinfo=UTC),
+    end_time=datetime(2024, 1, 18, 14, 0, tzinfo=UTC),
+    freq="500ms",
+    volatility=50
+)
+
 
 # Simulation
 results = {}

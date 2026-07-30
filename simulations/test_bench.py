@@ -1,8 +1,8 @@
 # Imports
 import pandas as pd
 
-from new_code.plot_utils import plot_results
-from new_code.price_spillover_simulations import run_simulation
+from functions.plot_utils import plot_results
+from functions.price_spillover_simulations import run_simulation
 
 # Parameters
 currency = "btc"

@@ -15,9 +15,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pandas as pd
 import streamlit as st
 
-from new_code.data_processing import FREQUENCIES
-from new_code.plot_utils import plot_results, resample_data
-from new_code.price_spillover_simulations import run_simulation
+from functions.data_processing import FREQUENCIES
+from functions.plot_utils import plot_results, resample_data
+from functions.price_spillover_simulations import run_simulation
 
 
 def frequency_to_seconds(freq):
