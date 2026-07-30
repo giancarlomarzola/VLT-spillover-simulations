@@ -6,10 +6,10 @@ class Orderbook:
         name: Human-readable name for this orderbook.
         depth_bid: Market depth on bid side in tokens.
         depth_ask: Market depth on ask side in tokens.
-        width_bid: Maximum slippage at full depth on bid side (in percent, e.g., 1 for 1%).
-        width_ask: Maximum slippage at full depth on ask side (in percent).
-        spread_bid: Spread at zero depth on bid side (in percent, e.g., 0.5 for 0.5 bps).
-        spread_ask: Spread at zero depth on ask side (in percent).
+        width_bid: Maximum slippage at full depth on bid side (in decimal, e.g., 0.01 for 1%).
+        width_ask: Maximum slippage at full depth on ask side (in decimal).
+        spread_bid: Spread at zero depth on bid side (in decimal, e.g., 0.005 for 0.5%).
+        spread_ask: Spread at zero depth on ask side (in decimal).
         k_bid: Curvature parameter for slippage formula on bid side. k=1 gives linear slippage; lower k gives more convex curve.
         k_ask: Curvature parameter for slippage formula on ask side.
         resilience_bid: Resilience parameter on bid side (float between 0 and 1). 1=perfect resilience.
@@ -17,17 +17,17 @@ class Orderbook:
     """
 
     def __init__(
-        self, 
-        name, 
-        depth_bid, 
-        depth_ask, 
-        width_bid, 
-        width_ask, 
-        spread_bid, 
+        self,
+        name,
+        depth_bid,
+        depth_ask,
+        width_bid,
+        width_ask,
+        spread_bid,
         spread_ask,
-        k_bid=1, 
-        k_ask=1, 
-        resilience_bid=1, 
+        k_bid=1,
+        k_ask=1,
+        resilience_bid=1,
         resilience_ask=1
         ):
         if not isinstance(name, str):
@@ -36,11 +36,10 @@ class Orderbook:
         self.name = name
         self.depth_bid = depth_bid
         self.depth_ask = depth_ask
-        # Convert width and spread from percent to decimal (e.g., 1 -> 0.01, 0.5 -> 0.005)
-        self.width_bid = width_bid / 100
-        self.width_ask = width_ask / 100
-        self.spread_bid = spread_bid / 100
-        self.spread_ask = spread_ask / 100
+        self.width_bid = width_bid
+        self.width_ask = width_ask
+        self.spread_bid = spread_bid
+        self.spread_ask = spread_ask
         self.k_bid = k_bid
         self.k_ask = k_ask
         self.resilience_bid = resilience_bid

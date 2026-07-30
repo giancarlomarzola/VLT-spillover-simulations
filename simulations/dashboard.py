@@ -107,6 +107,12 @@ if "custom_orderbooks" not in st.session_state:
     st.session_state.custom_orderbooks = {}
 if "plot_resample_freq" not in st.session_state:
     st.session_state.plot_resample_freq = "15s"
+if "currency" not in st.session_state:
+    st.session_state.currency = saved_config.get("currency") if saved_config else (saved_defaults.get("currency") if saved_defaults else "btc")
+if "frequency" not in st.session_state:
+    st.session_state.frequency = saved_config.get("frequency") if saved_config else (saved_defaults.get("frequency") if saved_defaults else "30s")
+if "show_hover" not in st.session_state:
+    st.session_state.show_hover = (saved_config.get("show_hover") if saved_config else None) or (saved_defaults.get("show_hover") if saved_defaults else False)
 
 def reset_plot_resample():
     """Reset plot resample frequency when settings change."""
@@ -118,11 +124,8 @@ with st.sidebar:
 
     # Currency and Frequency selection
     st.subheader("Simulation Parameters")
-    default_currency = saved_config.get("currency") if saved_config else (saved_defaults.get("currency") if saved_defaults else "btc")
-    default_frequency = saved_config.get("frequency") if saved_config else (saved_defaults.get("frequency") if saved_defaults else "30s")
-
     available_currencies = ["btc", "sushi", "eth"]
-    default_currency_index = available_currencies.index(default_currency) if default_currency in available_currencies else 0
+    default_currency_index = available_currencies.index(st.session_state.currency) if st.session_state.currency in available_currencies else 0
     currency = st.radio(
         "Currency",
         available_currencies,
@@ -130,16 +133,19 @@ with st.sidebar:
         index=default_currency_index,
         on_change=reset_plot_resample
     )
+    st.session_state.currency = currency
 
-    default_freq_index = FREQUENCIES.index(default_frequency) if default_frequency in FREQUENCIES else FREQUENCIES.index("30s")
+    default_freq_index = FREQUENCIES.index(st.session_state.frequency) if st.session_state.frequency in FREQUENCIES else FREQUENCIES.index("30s")
     frequency = st.selectbox(
         "Simulation Frequency",
         FREQUENCIES,
         index=default_freq_index,
         on_change=reset_plot_resample
     )
-    default_show_hover = (saved_config.get("show_hover") if saved_config else None) or (saved_defaults.get("show_hover") if saved_defaults else False)
-    show_hover = st.checkbox("Show hover info", value=default_show_hover)
+    st.session_state.frequency = frequency
+
+    show_hover = st.checkbox("Show hover info", value=st.session_state.show_hover)
+    st.session_state.show_hover = show_hover
 
     # Plot resampling
     st.subheader("Plot Display")
@@ -190,7 +196,7 @@ with st.sidebar:
         label_visibility="collapsed",
         on_change=reset_plot_resample
     )
-    lambda_target = rebalancing_mode == "Target"
+    lambda_target = rebalancing_mode == "Target Leverage"
 
     # Target value field (only show if Target mode)
     if lambda_target:
@@ -259,10 +265,10 @@ with st.sidebar:
             st.session_state.orderbooks_list = saved_defaults["orderbooks"]
         else:
             st.session_state.orderbooks_list = [
-                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Tight", "depth_bid": 50_000_000, "depth_ask": 50_000_000, "width_bid": 1.0, "width_ask": 1.0, "spread_bid": 0.005, "spread_ask": 0.005, "k_bid": 1, "k_ask": 1},
-                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Broad", "depth_bid": 50_000_000, "depth_ask": 50_000_000, "width_bid": 1.0, "width_ask": 1.0, "spread_bid": 0.05, "spread_ask": 0.05, "k_bid": 1, "k_ask": 1},
-                {"_id": str(uuid.uuid4()), "name": "Deep Wide Tight", "depth_bid": 50_000_000, "depth_ask": 50_000_000, "width_bid": 10.0, "width_ask": 10.0, "spread_bid": 0.005, "spread_ask": 0.005, "k_bid": 1, "k_ask": 1},
-                {"_id": str(uuid.uuid4()), "name": "Shallow Narrow Tight", "depth_bid": 5_000_000, "depth_ask": 5_000_000, "width_bid": 1.0, "width_ask": 1.0, "spread_bid": 0.005, "spread_ask": 0.005, "k_bid": 1, "k_ask": 1},
+                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Tight", "depth_bid": 50_000_000, "depth_ask": 50_000_000, "width_bid": 100, "width_ask": 100, "spread_bid": 50, "spread_ask": 50, "k_bid": 1, "k_ask": 1},
+                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Broad", "depth_bid": 50_000_000, "depth_ask": 50_000_000, "width_bid": 100, "width_ask": 100, "spread_bid": 500, "spread_ask": 500, "k_bid": 1, "k_ask": 1},
+                {"_id": str(uuid.uuid4()), "name": "Deep Wide Tight", "depth_bid": 50_000_000, "depth_ask": 50_000_000, "width_bid": 1000, "width_ask": 1000, "spread_bid": 50, "spread_ask": 50, "k_bid": 1, "k_ask": 1},
+                {"_id": str(uuid.uuid4()), "name": "Shallow Narrow Tight", "depth_bid": 5_000_000, "depth_ask": 5_000_000, "width_bid": 100, "width_ask": 100, "spread_bid": 50, "spread_ask": 50, "k_bid": 1, "k_ask": 1},
             ]
 
     # Display orderbook rows
@@ -330,7 +336,7 @@ with st.sidebar:
 
             with param_col2:
                 st.markdown("**Width (%)**")
-                width_val = orderbook.get("width_bid", 1.0)
+                width_val = float(orderbook.get("width_bid", 100))
                 width_input = st.number_input(
                     "Width",
                     value=width_val,
@@ -342,13 +348,12 @@ with st.sidebar:
                 orderbook["width_ask"] = width_input
 
             with param_col3:
-                st.markdown("**Spread (%)**")
-                spread_val = orderbook.get("spread_bid", 0.005)
+                st.markdown("**Spread (bps)**")
+                spread_val = float(orderbook.get("spread_bid", 50))
                 spread_input = st.number_input(
                     "Spread",
                     value=spread_val,
-                    step=0.0001,
-                    format="%.3f",
+                    step=0.1,
                     key=f"spread_{ob_id}",
                     label_visibility="collapsed"
                 )
@@ -391,7 +396,7 @@ with st.sidebar:
                 st.markdown("**Width (%)**")
                 width_bid_col, width_ask_col = st.columns(2)
                 with width_bid_col:
-                    width_bid_val = orderbook.get("width_bid", 1.0)
+                    width_bid_val = float(orderbook.get("width_bid", 100))
                     width_bid_input = st.number_input(
                         "Width Bid",
                         value=width_bid_val,
@@ -401,7 +406,7 @@ with st.sidebar:
                     )
                     orderbook["width_bid"] = width_bid_input
                 with width_ask_col:
-                    width_ask_val = orderbook.get("width_ask", 1.0)
+                    width_ask_val = float(orderbook.get("width_ask", 100))
                     width_ask_input = st.number_input(
                         "Width Ask",
                         value=width_ask_val,
@@ -413,26 +418,24 @@ with st.sidebar:
                 st.caption("bid     |     ask")
 
             with asym_col3:
-                st.markdown("**Spread (%)**")
+                st.markdown("**Spread (bps)**")
                 spread_bid_col, spread_ask_col = st.columns(2)
                 with spread_bid_col:
-                    spread_bid_val = orderbook.get("spread_bid", 0.005)
+                    spread_bid_val = float(orderbook.get("spread_bid", 50))
                     spread_bid_input = st.number_input(
                         "Spread Bid",
                         value=spread_bid_val,
-                        step=0.0001,
-                        format="%.6f",
+                        step=0.1,
                         key=f"spread_bid_asym_{ob_id}",
                         label_visibility="collapsed"
                     )
                     orderbook["spread_bid"] = spread_bid_input
                 with spread_ask_col:
-                    spread_ask_val = orderbook.get("spread_ask", 0.005)
+                    spread_ask_val = float(orderbook.get("spread_ask", 50))
                     spread_ask_input = st.number_input(
                         "Spread Ask",
                         value=spread_ask_val,
-                        step=0.0001,
-                        format="%.6f",
+                        step=0.1,
                         key=f"spread_ask_asym_{ob_id}",
                         label_visibility="collapsed"
                     )
@@ -448,10 +451,10 @@ with st.sidebar:
             "name": f"Orderbook {len(st.session_state.orderbooks_list) + 1}",
             "depth_bid": 50_000_000,
             "depth_ask": 50_000_000,
-            "width_bid": 1.0,
-            "width_ask": 1.0,
-            "spread_bid": 0.005,
-            "spread_ask": 0.005,
+            "width_bid": 100,
+            "width_ask": 100,
+            "spread_bid": 50,
+            "spread_ask": 50,
             "k_bid": 1,
             "k_ask": 1,
         })
@@ -468,7 +471,12 @@ with st.sidebar:
     with col2:
         if st.button("🔄 Reset to Default", width='stretch'):
             if saved_defaults:
-                st.session_state.orderbooks_list = saved_defaults.get("orderbooks", st.session_state.orderbooks_list)
+                st.session_state.clear()
+                st.session_state.orderbooks_list = saved_defaults.get("orderbooks", [])
+                st.session_state.currency = saved_defaults.get("currency", "btc")
+                st.session_state.frequency = saved_defaults.get("frequency", "30s")
+                st.session_state.show_hover = saved_defaults.get("show_hover", False)
+                st.session_state.plot_resample_freq = "15s"
                 st.rerun()
             else:
                 st.info("No defaults saved yet")
@@ -480,14 +488,18 @@ with st.sidebar:
 
     for ob_dict in st.session_state.orderbooks_list:
         if ob_dict["name"]:  # Only include if name is not empty
+            width_bid = ob_dict.get("width_bid", 100) / 100
+            width_ask = ob_dict.get("width_ask", 100) / 100
+            spread_bid = ob_dict.get("spread_bid", 50) / 10000
+            spread_ask = ob_dict.get("spread_ask", 50) / 10000
             ob = Orderbook(
                 name=ob_dict["name"],
                 depth_bid=ob_dict.get("depth_bid", 50_000_000),
                 depth_ask=ob_dict.get("depth_ask", 50_000_000),
-                width_bid=ob_dict.get("width_bid", 1.0),
-                width_ask=ob_dict.get("width_ask", 1.0),
-                spread_bid=ob_dict.get("spread_bid", 0.005),
-                spread_ask=ob_dict.get("spread_ask", 0.005),
+                width_bid=width_bid,
+                width_ask=width_ask,
+                spread_bid=spread_bid,
+                spread_ask=spread_ask,
                 k_bid=k_curvature,
                 k_ask=k_curvature,
                 resilience_bid=resilience,

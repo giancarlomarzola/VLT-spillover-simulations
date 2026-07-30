@@ -19,31 +19,31 @@ start_nav_down = 20_000_000
 start_exposure_down = -60_000_000
 
 # Orderbooks
-# width and spread in %
+# width and spread in decimal form
 orderbooks = [
     None,
     Orderbook(
-        name="Deep Narrow Tight", 
-        depth_bid=50_000_000, 
-        depth_ask=50_000_000, 
-        width_bid=1, 
-        width_ask=1, 
-        spread_bid=0.005, 
-        spread_ask=0.005, 
-        k_bid=0.5, 
-        k_ask=0.5
-        ),
+        name="Deep Narrow Tight",
+        depth_bid=50_000_000,
+        depth_ask=50_000_000,
+        width_bid=0.01,
+        width_ask=0.01,
+        spread_bid=0.005 / 100,
+        spread_ask=0.005 / 100,
+        k_bid=0.5,
+        k_ask=0.5,
+    ),
     Orderbook(
-        name="Deep Narrow Broad", 
-        depth_bid=50_000_000, 
-        depth_ask=50_000_000, 
-        width_bid=1, 
-        width_ask=1, 
-        spread_bid=0.05, 
-        spread_ask=0.05, 
-        k_bid=0.5, 
-        k_ask=0.5
-        ),
+        name="Deep Narrow Broad",
+        depth_bid=50_000_000,
+        depth_ask=50_000_000,
+        width_bid=0.01,
+        width_ask=0.01,
+        spread_bid=0.05 / 100,
+        spread_ask=0.05 / 100,
+        k_bid=0.5,
+        k_ask=0.5,
+    ),
 ]
 
 # Display options
@@ -53,7 +53,9 @@ plot_resample_freq = "30s"  # None
 
 
 # Random price series - to be substituted later
-def generate_price_series(start_price=100, start_time=None, end_time=None, freq="1min", volatility=0.01):
+def generate_price_series(
+    start_price=100, start_time=None, end_time=None, freq="1min", volatility=0.01
+):
     """
     Generate a price series with timestamps.
 
@@ -87,7 +89,7 @@ def generate_price_series(start_price=100, start_time=None, end_time=None, freq=
 
     for _ in range(len(timestamps) - 1):
         ret = random.uniform(-adjusted_volatility, adjusted_volatility)
-        prices.append(round(prices[-1] * (1+ret), 2))
+        prices.append(round(prices[-1] * (1 + ret), 2))
 
     return timestamps, prices
 
@@ -97,7 +99,7 @@ timestamps, price_series = generate_price_series(
     start_time=datetime(2024, 1, 18, 12, 0, tzinfo=UTC),
     end_time=datetime(2024, 1, 18, 14, 0, tzinfo=UTC),
     freq="500ms",
-    volatility=50
+    volatility=50,
 )
 
 
@@ -127,11 +129,11 @@ for orderbook in orderbooks:
 
 # Plot results
 price_fig, leverage_fig = plot_results(
-    results, 
-    x_axis=timestamps, 
-    lambda_upper=lambda_upper, 
-    lambda_lower=lambda_lower, 
+    results,
+    x_axis=timestamps,
+    lambda_upper=lambda_upper,
+    lambda_lower=lambda_lower,
     resample_freq=plot_resample_freq,
-    )
+)
 price_fig.show()
 leverage_fig.show()
