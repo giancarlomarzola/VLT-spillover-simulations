@@ -114,18 +114,18 @@ def _step_token(prev, omega, ret, lambda_target, lambda_upper, lambda_lower):
 
 
 def run_simulation(
-    lambda_target, # None = boundary rebalancing, float = target rebalancing
-    lambda_upper, # upper boundary
-    lambda_lower, # lower boundary
-    orderbook=None,
-    prepared_data=None,
-    price_series=None,
-    start_nav_up=None,
-    start_exposure_up=None,
-    start_nav_down=None,
-    start_exposure_down=None,
-    timestamps=None,
-    ):
+    lambda_target: float | None,
+    lambda_upper: float,
+    lambda_lower: float,
+    orderbook: Orderbook | None = None,
+    prepared_data: pd.DataFrame | None = None,
+    price_series: list | np.ndarray | None = None,
+    start_nav_up: float | None = None,
+    start_exposure_up: float | None = None,
+    start_nav_down: float | None = None,
+    start_exposure_down: float | None = None,
+    timestamps: list | np.ndarray | None = None,
+) -> pd.DataFrame:
     """
     Simulate a pair of variable-leverage UP/DOWN tokens through time.
 
@@ -165,8 +165,8 @@ def run_simulation(
     has_orderbook = orderbook is not None
     if has_orderbook:
         depth = orderbook.depth
-        spread = (orderbook.spread[0] / 100, orderbook.spread[1] / 100)
-        width = (orderbook.width[0] / 100, orderbook.width[1] / 100)
+        spread = orderbook.spread
+        width = orderbook.width
         k_pair = orderbook.k
 
     # t = 0: Seed from provided params or prepared_data
