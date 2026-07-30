@@ -2,6 +2,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+
 from functions.price_spillover_simulations import _as_side_pair
 
 FIGURES_DIR = Path(__file__).resolve().parent.parent / "Figures"
