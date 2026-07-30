@@ -511,7 +511,8 @@ else:
                             orderbook=orderbook,
                             orderbook_formula=orderbook_formula,
                             k=k,
-                            prepared_data=binance_data
+                            prepared_data=binance_data,
+                            timestamps=binance_data["timestamp"].values
                         )
                         results[orderbook_name] = result
 

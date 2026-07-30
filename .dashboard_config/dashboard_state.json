@@ -71,5 +71,5 @@
   "leverage_timing": "Before Rebalance",
   "include_baseline": true,
   "orderbook_formula": "curved",
-  "k": 7.0
+  "k": 0.3
 }

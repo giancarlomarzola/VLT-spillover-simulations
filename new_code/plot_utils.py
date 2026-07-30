@@ -71,6 +71,22 @@ def plot_results(
     Returns:
         Tuple of (price_fig, leverage_fig)
     """
+    # Extract timestamps from first result if available
+    first_df = next(iter(results_dict.values()))
+    if "timestamp" in first_df.columns:
+        result_timestamps = first_df["timestamp"].values
+        if x_axis is None:
+            x_axis = result_timestamps
+
+    # Determine which price to use as baseline (before resampling)
+    if market_price is None:
+        if "raw_price" in first_df.columns:
+            market_price = first_df["raw_price"].values
+        else:
+            raise ValueError(
+                "market_price must be provided or 'raw_price' must be in dataframes"
+            )
+
     # Resample data if requested
     if resample_freq and resample_freq != "raw" and x_axis is not None and len(x_axis) > 0:
         temp_df = pd.DataFrame(
@@ -79,41 +95,30 @@ def plot_results(
         temp_df["timestamp"] = pd.to_datetime(temp_df["timestamp"], utc=True)
         temp_df.set_index("timestamp", inplace=True)
         resampled = temp_df.resample(resample_freq).last()
-        x_axis = resampled.index.values
+        resampled_x_axis = resampled.index.values
         market_price = resampled["market_price"].values
 
-        # Resample each result dataframe
+        # Resample each result dataframe using its own timestamps
         resampled_results_dict = {}
         for name, df in results_dict.items():
             df_temp = df.copy()
-            # Get original x_axis indices for this dataframe
-            orig_len = len(df_temp)
-            df_temp["timestamp"] = x_axis[: len(x_axis)]  # Will be adjusted
-            # Re-align: we need to create a temp dataframe with the original timestamps
-            original_x = (
-                pd.Series(x_axis).iloc[:orig_len].values
-                if len(x_axis) >= orig_len
-                else x_axis
-            )
-            df_temp["timestamp"] = original_x
-            df_temp.set_index("timestamp", inplace=True)
+            if "timestamp" in df_temp.columns:
+                # Use timestamps already in the dataframe
+                df_temp["timestamp"] = pd.to_datetime(df_temp["timestamp"], utc=True)
+                df_temp.set_index("timestamp", inplace=True)
+            else:
+                # Fall back to x_axis if no timestamps in df
+                df_temp["timestamp"] = pd.to_datetime(x_axis, utc=True)
+                df_temp.set_index("timestamp", inplace=True)
             df_resampled = df_temp.resample(resample_freq).last()
             resampled_results_dict[name] = df_resampled.reset_index(drop=True)
 
         results_dict = resampled_results_dict
+        x_axis = resampled_x_axis
     # Get data dimensions
     first_df = next(iter(results_dict.values()))
     if x_axis is None:
         x_axis = list(range(len(first_df)))
-
-    # Determine which price to use as baseline
-    if market_price is None:
-        if "raw_price" in first_df.columns:
-            market_price = first_df["raw_price"].values
-        else:
-            raise ValueError(
-                "market_price must be provided or 'raw_price' must be in dataframes"
-            )
 
     # Calculate rebalance magnitudes if not provided
     if not rebalance_magnitudes:

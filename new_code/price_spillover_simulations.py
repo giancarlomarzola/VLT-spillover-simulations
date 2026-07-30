@@ -122,6 +122,7 @@ def run_simulation(
     start_exposure_up=None,
     start_nav_down=None,
     start_exposure_down=None,
+    timestamps=None,
     ):
     """
     Simulate a pair of variable-leverage UP/DOWN tokens through time.
@@ -153,6 +154,7 @@ def run_simulation(
     start_exposure_up: initial notional exposure of UP token.
     start_nav_down: initial NAV of DOWN token.
     start_exposure_down: initial notional exposure of DOWN token.
+    timestamps: optional timestamps for each price point (array-like).
     """
     if orderbook_formula not in ("linear", "curved"):
         raise ValueError(f"orderbook_formula must be 'linear' or 'curved', got {orderbook_formula!r}")
@@ -296,6 +298,9 @@ def run_simulation(
 
         m_lag = m_prev  # becomes m_{t-1}, needed as the lag term at t+1
 
-    return pd.DataFrame(out, columns=COLUMNS)
+    result_df = pd.DataFrame(out, columns=COLUMNS)
+    if timestamps is not None:
+        result_df.insert(0, "timestamp", timestamps)
+    return result_df
 
 
