@@ -522,7 +522,7 @@ else:
                             orderbook=orderbook,
                             orderbook_formula=orderbook_formula,
                             k=k,
-                            data=binance_data
+                            prepared_data=binance_data
                         )
                         results[orderbook_name] = result
 
