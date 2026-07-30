@@ -16,7 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from new_code.data_processing import FREQUENCIES
-from new_code.plot_utils import plot_results
+from new_code.plot_utils import plot_results, resample_data
 from new_code.price_spillover_simulations import run_simulation
 
 
@@ -31,17 +31,6 @@ def frequency_to_seconds(freq):
     if freq.endswith("min"):
         return float(freq[:-3]) * 60
     return float('inf')
-
-def resample_data(data, resample_freq):
-    """Resample time-series data to a coarser frequency by taking the last value in each period."""
-    if resample_freq == "raw":
-        return data.copy()
-
-    df = data.copy()
-    df.set_index('timestamp', inplace=True)
-    resampled = df.resample(resample_freq).last()
-    resampled.reset_index(inplace=True)
-    return resampled
 
 # Persistence setup
 CONFIG_DIR = Path(__file__).parent.parent / ".dashboard_config"

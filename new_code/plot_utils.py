@@ -1,6 +1,7 @@
 """Shared plotting utilities for simulation results."""
 
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 
 TRACE_COLORS = [
@@ -15,6 +16,26 @@ TRACE_COLORS = [
     "#FF97FF",
     "#FECB52",
 ]
+
+
+def resample_data(data, resample_freq):
+    """Resample time-series data to a coarser frequency by taking the last value in each period.
+
+    Args:
+        data: DataFrame with 'timestamp' column
+        resample_freq: Resample frequency string (e.g., '15s', '1min') or 'raw' for no resampling
+
+    Returns:
+        Resampled DataFrame
+    """
+    if resample_freq == "raw":
+        return data.copy()
+
+    df = data.copy()
+    df.set_index("timestamp", inplace=True)
+    resampled = df.resample(resample_freq).last()
+    resampled.reset_index(inplace=True)
+    return resampled
 
 
 def plot_results(
@@ -50,8 +71,6 @@ def plot_results(
     Returns:
         Tuple of (price_fig, leverage_fig)
     """
-    import pandas as pd
-
     # Resample data if requested
     if resample_freq and resample_freq != "raw" and x_axis is not None and len(x_axis) > 0:
         temp_df = pd.DataFrame(
@@ -307,7 +326,8 @@ def plot_results(
                     x=x_axis,
                     y=df[up_col].values,
                     mode="lines",
-                    name=f"{name} UP",
+                    name=name,
+                    legendgroup=name,
                     line={"color": color, "width": 2},
                     hovertemplate=(
                         f"<b>{name} UP</b><br>Time: %{{x|%H:%M:%S}}<br>Leverage: %{{y:.3f}}<extra></extra>"
@@ -325,8 +345,10 @@ def plot_results(
                     x=x_axis,
                     y=-df[down_col].values,
                     mode="lines",
-                    name=f"{name} DOWN",
-                    line={"color": color, "width": 2, "dash": "6 3"},
+                    name=name,
+                    legendgroup=name,
+                    showlegend=False,
+                    line={"color": color, "width": 2, "dash": "dash"},
                     customdata=df[down_col].values,
                     hovertemplate=(
                         f"<b>{name} DOWN</b><br>Time: %{{x|%H:%M:%S}}<br>Leverage: %{{customdata:.3f}}<extra></extra>"
