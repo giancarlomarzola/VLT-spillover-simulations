@@ -27,48 +27,12 @@ def _columns():
 COLUMNS = _columns()
 COL = {name: i for i, name in enumerate(COLUMNS)}
 
-
-def _as_side_pair(param):
-    """ Ensures bid and ask are correctly defined
-    Scalar -> symmetric (bid, ask); 2-tuple -> asymmetric (bid, ask) as given."""
-    if np.isscalar(param):
-        return (param, param)
-    bid, ask = param
-    return (bid, ask)
-
-
-def _linear_slippage(d, depth, spread, width):
+def _slippage(d, depth, spread, width, k):
     """
     Signed slippage s_t for a trade of size d (in tokens), by inverting the
-    piecewise-linear synthetic orderbook f(z). depth/spread/width are each
-    (bid, ask) pairs, so bid- and ask-side books can differ (asymmetric case).
-
-    Note: the closed-form inversion in the source material is only spelled
-    out for the symmetric book. This applies it per-side (ask-side D,S,W for
-    d>0, bid-side for d<0), which is the natural generalisation but is my
-    extrapolation, not something stated explicitly — flag if that's not
-    what you intended.
-    """
-    if d == 0:
-        return 0.0
-    D, S, W = (depth[1], spread[1], width[1]) if d > 0 else (depth[0], spread[0], width[0])
-    x = abs(d)
-    if D == 0:
-        s = W
-    else:
-        s = W if x > D else x * (W - S) / D + S
-    return s if d > 0 else -s
-
-def _curved_slippage(d, depth, spread, width, k):
-    """
-    Signed slippage s_t for a trade of size d (in tokens), by inverting the
-    curved synthetic orderbook f(z) = D * t/(k + (1-k)*t). depth/spread/width/k
+    synthetic orderbook f(z) = D * t/(k + (1-k)*t). depth/spread/width/k
     are each (bid, ask) pairs, so bid- and ask-side books can differ (asymmetric
     case).
-
-    Note: as with the linear version, this applies the per-side inversion
-    (ask-side D,S,W,k for d>0, bid-side for d<0) as the natural generalisation
-    of a symmetric-book formula — flag if that's not what you intended.
     """
     if d == 0:
         return 0.0
@@ -243,7 +207,7 @@ def run_simulation(
             else:
                 # Execution uncapped: normal slippage
                 scale = 1.0
-                s_t = _curved_slippage(d_target, depth_tokens, spread, width, k_pair)
+                s_t = _slippage(d_target, depth_tokens, spread, width, k_pair)
         else:
             scale = 1.0
             s_t = 0.0
