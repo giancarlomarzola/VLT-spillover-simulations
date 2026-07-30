@@ -1,9 +1,10 @@
 # Imports
 import pandas as pd
 
-from functions.orderbook import Orderbook
-from functions.plot_utils import plot_orderbook_depth, plot_results
-from functions.price_spillover_simulations import run_simulation
+from core.orderbook import Orderbook
+from core.price_spillover_simulations import run_simulation
+from utils.paths import DATA_PROCESSED
+from utils.plotting import plot_orderbook_depth, plot_results
 
 # Parameters
 currency = "btc"
@@ -100,7 +101,7 @@ orderbooks = [
 try:
     print(f"Loading {currency.upper()} at {frequency} frequency...")
     binance_data = pd.read_parquet(
-        f"dissertation_data/token_dataframes/{currency}_{frequency}_processed.parquet"
+        DATA_PROCESSED / f"{currency}_{frequency}_processed.parquet"
     )
     binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)
     print(f"Loaded {len(binance_data)} rows")

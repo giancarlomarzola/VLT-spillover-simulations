@@ -2,10 +2,12 @@ import numpy as np
 import pandas as pd
 from IPython.display import display
 
+from utils.paths import TOKEN_DATAFRAMES
+
 currency = 'btc'
 frequency = '50ms'
 
-df = pd.read_parquet(f"dissertation_data/token_dataframes/{currency}_{frequency}_processed.parquet")
+df = pd.read_parquet(TOKEN_DATAFRAMES / f"{currency}_{frequency}_processed.parquet")
 
 df['pct_return'] = df['price'].pct_change()
 

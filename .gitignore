@@ -1,10 +1,6 @@
 **/**/.DS_Store
-andreas_python/*
-andreas_python_new/*
-dissertation_data/*
-!dissertation_data/.keep
-plots_sushi_andreas_code
-figures/*
+data/*
+!data/.keep
 .venv/
 __pycache__
 

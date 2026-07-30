@@ -2,6 +2,8 @@ import os
 
 import pandas as pd
 
+from utils.paths import DATA_PROCESSED, DATA_RAW
+
 # Available data frequencies for simulations
 FREQUENCIES = ["Tick", "50ms", "500ms", "1s", "15s", "30s", "1min"]
 
@@ -100,7 +102,7 @@ def process_data(df, token_name):
 
 def add_rebalance_data(token_merged, currency):
     # Load rebalancing data from Excel
-    excelfile = "dissertation_data/Leverage Tokens/BinanceLeverageToken.xlsx"
+    excelfile = DATA_RAW / "Leverage Tokens" / "BinanceLeverageToken.xlsx"
 
     # Read rebalancing data for up and down tokens
     up_rebalance = pd.read_excel(
@@ -131,9 +133,9 @@ def add_rebalance_data(token_merged, currency):
     up_rebalance = up_rebalance.sort_values("Time").reset_index(drop=True)
     down_rebalance = down_rebalance.sort_values("Time").reset_index(drop=True)
 
-    # Convert Time to same dtype as timestamp for merge compatibility
-    up_rebalance["Time"] = pd.to_datetime(up_rebalance["Time"]).dt.as_unit("ms")
-    down_rebalance["Time"] = pd.to_datetime(down_rebalance["Time"]).dt.as_unit("ms")
+    # Convert Time to same dtype as timestamp for merge compatibility (convert to ns to match token_merged)
+    up_rebalance["Time"] = pd.to_datetime(up_rebalance["Time"]).dt.as_unit("ns")
+    down_rebalance["Time"] = pd.to_datetime(down_rebalance["Time"]).dt.as_unit("ns")
 
     # Verify timezone: SUSHIUP should have rebalances in the known UTC window
     if currency.lower() == "sushi":
@@ -189,13 +191,13 @@ def add_rebalance_data(token_merged, currency):
 def create_currency_df(currency, include_rebalance=True):
     """Load and clean data for a leverage token pair, merging perpetual with UP/DOWN tokens."""
     token_up = load_raw_data(
-        "dissertation_data", "binance", f"{currency}upusdt", "2021-05-19", "trade"
+        str(DATA_RAW), "binance", f"{currency}upusdt", "2021-05-19", "trade"
     )
     token_down = load_raw_data(
-        "dissertation_data", "binance", f"{currency}downusdt", "2021-05-19", "trade"
+        str(DATA_RAW), "binance", f"{currency}downusdt", "2021-05-19", "trade"
     )
     token = load_raw_data(
-        "dissertation_data", "binance-futures", f"{currency}usdt", "2021-05-19", "trade"
+        str(DATA_RAW), "binance-futures", f"{currency}usdt", "2021-05-19", "trade"
     )
 
     # Clean data at tick level (resampling deferred to simulation stage)
@@ -222,8 +224,8 @@ def prepare_processed_data(currency, frequencies=None):
         currency: ticker (e.g., "btc", "sushi")
         frequencies: list of frequencies (e.g., ["15s", "30s", "1min"]).
     """
-    output_folder = "dissertation_data/token_dataframes"
-    os.makedirs(output_folder, exist_ok=True)
+    output_folder = DATA_PROCESSED
+    output_folder.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading {currency.upper()} token data (tick-level, cleaned)...")
     data = create_currency_df(currency)
@@ -240,7 +242,7 @@ def prepare_processed_data(currency, frequencies=None):
     data_filtered = data[data["timestamp"].between(analysis_start, analysis_end)].reset_index(drop=True)
     print(f"Filtered data shape (2-hour window): {data_filtered.shape}")
 
-    filename_tick = f"{output_folder}/{currency}_tick_processed.parquet"
+    filename_tick = output_folder / f"{currency}_tick_processed.parquet"
     data_filtered.to_parquet(filename_tick, index=False)
     print(f"Saved tick-level data ({data_filtered.shape[0]} rows) to {filename_tick}")
 
@@ -258,7 +260,7 @@ def prepare_processed_data(currency, frequencies=None):
             # Filter resampled data to analysis period
             df_resampled = df_resampled[df_resampled["timestamp"].between(analysis_start, analysis_end)].reset_index(drop=True)
 
-            filename = f"{output_folder}/{currency}_{freq}_processed.parquet"
+            filename = output_folder / f"{currency}_{freq}_processed.parquet"
             df_resampled.to_parquet(filename, index=False)
             print(f"Saved {freq} resampled data ({df_resampled.shape[0]} rows) to {filename}")
 

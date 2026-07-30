@@ -4,9 +4,9 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
-from functions.orderbook import Orderbook
-from functions.plot_utils import plot_orderbook_depth, plot_results
-from functions.price_spillover_simulations import run_simulation
+from core.orderbook import Orderbook
+from core.price_spillover_simulations import run_simulation
+from utils.plotting import plot_orderbook_depth, plot_results
 
 lambda_target = None  # None = boundary rebalancing, float = target rebalancing
 lambda_upper = 4  # upper boundary
@@ -17,6 +17,9 @@ start_exposure_up = 90_000_000
 
 start_nav_down = 20_000_000
 start_exposure_down = -60_000_000
+
+k = 0.3
+resilience = 0.2
 
 # Display options
 show_hover_info = True
@@ -35,8 +38,10 @@ orderbooks = [
         width_ask=0.01,
         spread_bid=0.005 / 100,
         spread_ask=0.005 / 100,
-        k_bid=0.5,
-        k_ask=0.5,
+        k_bid=k,
+        k_ask=k,
+        resilience_ask=resilience,
+        resilience_bid=resilience,
     ),
     Orderbook(
         name="Deep Narrow Broad",
@@ -46,8 +51,10 @@ orderbooks = [
         width_ask=0.01,
         spread_bid=0.05 / 100,
         spread_ask=0.05 / 100,
-        k_bid=0.5,
-        k_ask=0.5,
+        k_bid=k,
+        k_ask=k,
+        resilience_ask=resilience,
+        resilience_bid=resilience,
     ),
 ]
 

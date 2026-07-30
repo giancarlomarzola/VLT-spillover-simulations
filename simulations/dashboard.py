@@ -15,10 +15,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pandas as pd
 import streamlit as st
 
-from functions.data_processing import FREQUENCIES
-from functions.orderbook import Orderbook
-from functions.plot_utils import plot_orderbook_depth, plot_results, resample_data
-from functions.price_spillover_simulations import run_simulation
+from core.orderbook import Orderbook
+from core.price_spillover_simulations import run_simulation
+from utils.data_io import FREQUENCIES
+from utils.paths import DATA_PROCESSED
+from utils.plotting import plot_orderbook_depth, plot_results, resample_data
 
 
 def frequency_to_seconds(freq):
@@ -526,9 +527,9 @@ else:
                 try:
                     # Load pre-processed data
                     if frequency == "Tick":
-                        filepath = f"dissertation_data/token_dataframes/{currency}_tick_processed.parquet"
+                        filepath = DATA_PROCESSED / f"{currency}_tick_processed.parquet"
                     else:
-                        filepath = f"dissertation_data/token_dataframes/{currency}_{frequency}_processed.parquet"
+                        filepath = DATA_PROCESSED / f"{currency}_{frequency}_processed.parquet"
 
                     binance_data = pd.read_parquet(filepath)
                     binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)
@@ -648,7 +649,7 @@ else:
                     st.error(
                         f"Pre-processed data not found for {currency.upper()} at {frequency} frequency.\n\n"
                         f"Available frequencies: Tick, 15s, 30s, 1min\n\n"
-                        f"Please run `python new_code/data_processing.py` to prepare the data."
+                        f"Please run `python utils/data_io.py` to prepare the data."
                     )
                 except Exception as e:  # noqa: BLE001
                     st.error(f"Error running simulation: {e!s}")
