@@ -133,9 +133,10 @@ def add_rebalance_data(token_merged, currency):
     up_rebalance = up_rebalance.sort_values("Time").reset_index(drop=True)
     down_rebalance = down_rebalance.sort_values("Time").reset_index(drop=True)
 
-    # Convert Time to same dtype as timestamp for merge compatibility (convert to ns to match token_merged)
+    # Convert Time and timestamp to matching dtype (ns) for merge_asof compatibility
     up_rebalance["Time"] = pd.to_datetime(up_rebalance["Time"]).dt.as_unit("ns")
     down_rebalance["Time"] = pd.to_datetime(down_rebalance["Time"]).dt.as_unit("ns")
+    token_merged["timestamp"] = token_merged["timestamp"].dt.as_unit("ns")
 
     # Verify timezone: SUSHIUP should have rebalances in the known UTC window
     if currency.lower() == "sushi":
