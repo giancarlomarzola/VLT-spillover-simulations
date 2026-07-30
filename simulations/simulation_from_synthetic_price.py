@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pandas as pd
 
 from functions.orderbook import Orderbook
-from functions.plot_utils import plot_results
+from functions.plot_utils import plot_orderbook_depth, plot_results
 from functions.price_spillover_simulations import run_simulation
 
 lambda_target = None  # None = boundary rebalancing, float = target rebalancing
@@ -17,6 +17,11 @@ start_exposure_up = 90_000_000
 
 start_nav_down = 20_000_000
 start_exposure_down = -60_000_000
+
+# Display options
+show_hover_info = True
+show_markers = False
+plot_resample_freq = "30s"  # None
 
 # Orderbooks
 # width and spread in decimal form
@@ -45,12 +50,6 @@ orderbooks = [
         k_ask=0.5,
     ),
 ]
-
-# Display options
-show_hover_info = True
-show_markers = False
-plot_resample_freq = "30s"  # None
-
 
 # Random price series - to be substituted later
 def generate_price_series(
@@ -137,3 +136,11 @@ price_fig, leverage_fig = plot_results(
 )
 price_fig.show()
 leverage_fig.show()
+
+# Plot orderbook depth
+depth_fig = plot_orderbook_depth(
+    results,
+    x_axis=timestamps,
+    show_hover=show_hover_info,
+)
+depth_fig.show()

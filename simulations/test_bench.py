@@ -20,7 +20,7 @@ resilience = 0.2
 show_hover_info = True
 show_markers = False
 plot_resample_freq = None
-leverage_timing = 'After Rebalance' # 'Before Rebalance'
+leverage_timing = 'Before Rebalance' # 'Before Rebalance'
 
 
 # Orderbooks

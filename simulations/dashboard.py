@@ -471,6 +471,7 @@ with st.sidebar:
     with col2:
         if st.button("🔄 Reset to Default", width='stretch'):
             if saved_defaults:
+                CONFIG_FILE.unlink(missing_ok=True)
                 st.session_state.clear()
                 st.session_state.orderbooks_list = saved_defaults.get("orderbooks", [])
                 st.session_state.currency = saved_defaults.get("currency", "btc")
@@ -629,8 +630,8 @@ else:
                     )
 
                     # Display results in placeholder at top
-                    plot_placeholder.plotly_chart(price_fig, use_container_width=True)
-                    leverage_placeholder.plotly_chart(leverage_fig, use_container_width=True)
+                    plot_placeholder.plotly_chart(price_fig, width='stretch')
+                    leverage_placeholder.plotly_chart(leverage_fig, width='stretch')
 
                     # Display orderbook depth plot
                     depth_fig = plot_orderbook_depth(
@@ -639,7 +640,7 @@ else:
                         show_hover=show_hover,
                         title_prefix=title_prefix
                     )
-                    depth_placeholder.plotly_chart(depth_fig, use_container_width=True)
+                    depth_placeholder.plotly_chart(depth_fig, width='stretch')
 
                     st.success("Simulation completed!")
 
