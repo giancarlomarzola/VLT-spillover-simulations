@@ -1,7 +1,7 @@
 """
 VLT Simulation Dashboard
 Run:
-streamlit run new_code/dashboard.py
+streamlit run simulations/dashboard.py
 """
 
 import json
@@ -16,6 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from functions.data_processing import FREQUENCIES
+from functions.orderbook import Orderbook
 from functions.plot_utils import plot_results, resample_data
 from functions.price_spillover_simulations import run_simulation
 
@@ -55,7 +56,7 @@ def load_defaults():
             return None
     return None
 
-def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k):
+def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     config = {
         "orderbooks": orderbooks,
@@ -69,13 +70,11 @@ def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, la
         "show_markers": show_markers,
         "leverage_timing": leverage_timing,
         "include_baseline": include_baseline,
-        "orderbook_formula": orderbook_formula,
-        "k": k,
     }
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=2)
 
-def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k):
+def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     defaults = {
         "orderbooks": orderbooks,
@@ -89,8 +88,6 @@ def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_valu
         "show_markers": show_markers,
         "leverage_timing": leverage_timing,
         "include_baseline": include_baseline,
-        "orderbook_formula": orderbook_formula,
-        "k": k,
     }
     with open(DEFAULTS_FILE, 'w') as f:
         json.dump(defaults, f, indent=2)
@@ -110,16 +107,6 @@ if "plot_resample_freq" not in st.session_state:
 def reset_plot_resample():
     """Reset plot resample frequency when settings change."""
     st.session_state.plot_resample_freq = "15s"
-
-# Predefined orderbooks
-predefined_orderbooks = {
-    "no_orderbook": None,
-    "Deep Narrow Tight": {"depth": 50_000_000, "width": 1, "spread": 0.005},
-    "Deep Narrow Broad": {"depth": 50_000_000, "width": 1, "spread": 0.05},
-    "Deep Wide Tight": {"depth": 50_000_000, "width": 10, "spread": 0.005},
-    "Shallow Narrow Tight": {"depth": 5_000_000, "width": 1, "spread": 0.005},
-    "Asymmetrical Depth": {"depth": (30_000_000, 50_000_000), "width": 1, "spread": 0.005},
-}
 
 # Sidebar configuration
 with st.sidebar:
@@ -238,29 +225,6 @@ with st.sidebar:
     default_include_baseline = (saved_config.get("include_baseline") if saved_config else None) or (saved_defaults.get("include_baseline") if saved_defaults else True)
     include_baseline = st.checkbox("Include baseline (no orderbook)", value=default_include_baseline, on_change=reset_plot_resample)
 
-    default_orderbook_formula = (saved_config.get("orderbook_formula") if saved_config else None) or (saved_defaults.get("orderbook_formula") if saved_defaults else "linear")
-    orderbook_formula = st.radio(
-        "Slippage formula",
-        ["linear", "curved"],
-        index=0 if default_orderbook_formula == "linear" else 1,
-        horizontal=True,
-        on_change=reset_plot_resample
-    )
-
-    if orderbook_formula == "curved":
-        default_k = (saved_config.get("k") if saved_config else None) or (saved_defaults.get("k") if saved_defaults else 0.3)
-        k = st.slider(
-            "Curvature (k)",
-            min_value=0.1,
-            max_value=10.0,
-            value=default_k,
-            step=0.1,
-            help="Lower k = more convex orderbook curve; k=1 approaches the linear book.",
-            on_change=reset_plot_resample
-        )
-    else:
-        k = None
-
     # Initialize orderbooks list if not exists
     if "orderbooks_list" not in st.session_state:
         if saved_config and "orderbooks" in saved_config:
@@ -269,16 +233,11 @@ with st.sidebar:
             st.session_state.orderbooks_list = saved_defaults["orderbooks"]
         else:
             st.session_state.orderbooks_list = [
-                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Tight", "depth": 50_000_000, "width": 1.0, "spread": 0.005},
-                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Broad", "depth": 50_000_000, "width": 1.0, "spread": 0.05},
-                {"_id": str(uuid.uuid4()), "name": "Deep Wide Tight", "depth": 50_000_000, "width": 10.0, "spread": 0.005},
-                {"_id": str(uuid.uuid4()), "name": "Shallow Narrow Tight", "depth": 5_000_000, "width": 1.0, "spread": 0.005},
+                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Tight", "depth": 50_000_000, "width": 1.0, "spread": 0.005, "k": 1},
+                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Broad", "depth": 50_000_000, "width": 1.0, "spread": 0.05, "k": 1},
+                {"_id": str(uuid.uuid4()), "name": "Deep Wide Tight", "depth": 50_000_000, "width": 10.0, "spread": 0.005, "k": 1},
+                {"_id": str(uuid.uuid4()), "name": "Shallow Narrow Tight", "depth": 5_000_000, "width": 1.0, "spread": 0.005, "k": 1},
             ]
-
-        # Ensure all loaded orderbooks have _id (for backwards compatibility)
-        for ob in st.session_state.orderbooks_list:
-            if "_id" not in ob:
-                ob["_id"] = str(uuid.uuid4())
 
     # Display orderbook rows
     for idx, orderbook in enumerate(st.session_state.orderbooks_list):
@@ -317,8 +276,8 @@ with st.sidebar:
                 st.session_state.orderbooks_list = [ob for ob in st.session_state.orderbooks_list if ob.get("_id") != ob_id]
                 st.rerun()
 
-        # Parameters row (Depth, Width, Spread)
-        param_col1, param_col2, param_col3 = st.columns([1.4, 1.05, 1.05])
+        # Parameters row (Depth, Width, Spread, k)
+        param_col1, param_col2, param_col3, param_col4 = st.columns([1.4, 1.0, 1.0, 0.9])
 
         with param_col1:
             st.markdown("**Depth (M USD)**")
@@ -412,6 +371,37 @@ with st.sidebar:
             except ValueError:
                 pass  # Keep previous value if parsing fails
 
+        with param_col4:
+            st.markdown("**k (Curvature)**")
+            # Convert list back to tuple if needed (from JSON deserialization)
+            if isinstance(orderbook["k"], list):
+                orderbook["k"] = tuple(orderbook["k"])
+
+            # Format k for display (handle both float and tuple)
+            if isinstance(orderbook["k"], tuple):
+                k_str = f"{orderbook['k'][0]}, {orderbook['k'][1]}"
+            else:
+                k_str = str(orderbook["k"])
+
+            k_input = st.text_input(
+                "k",
+                value=k_str,
+                key=f"k_{ob_id}",
+                label_visibility="collapsed",
+                placeholder="e.g., 1 or 0.5, 1"
+            )
+            st.caption("k=1: linear")
+
+            # Parse k input (handle both single values and tuples)
+            try:
+                if "," in k_input:
+                    parts = [float(p.strip()) for p in k_input.split(",")]
+                    orderbook["k"] = tuple(parts) if len(parts) == 2 else parts[0]
+                else:
+                    orderbook["k"] = float(k_input)
+            except ValueError:
+                pass  # Keep previous value if parsing fails
+
         st.divider()
 
     # Add row button
@@ -421,7 +411,8 @@ with st.sidebar:
             "name": f"Orderbook {len(st.session_state.orderbooks_list) + 1}",
             "depth": 50_000_000,
             "width": 1.0,
-            "spread": 0.005
+            "spread": 0.005,
+            "k": 1,
         })
         st.rerun()
 
@@ -430,7 +421,7 @@ with st.sidebar:
     col1, col2 = st.columns(2)
     with col1:
         if st.button("💾 Save as Default", width='stretch'):
-            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k)
+            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline)
             st.success("Settings saved as default!")
 
     with col2:
@@ -446,16 +437,19 @@ with st.sidebar:
     if include_baseline:
         selected_orderbooks["Baseline (No Orderbook)"] = None
 
-    for orderbook in st.session_state.orderbooks_list:
-        if orderbook["name"]:  # Only include if name is not empty
-            selected_orderbooks[orderbook["name"]] = {
-                "depth": orderbook["depth"],
-                "width": orderbook["width"],
-                "spread": orderbook["spread"]
-            }
+    for ob_dict in st.session_state.orderbooks_list:
+        if ob_dict["name"]:  # Only include if name is not empty
+            ob = Orderbook(
+                name=ob_dict["name"],
+                depth=ob_dict["depth"],
+                width=ob_dict["width"],
+                spread=ob_dict["spread"],
+                k=ob_dict["k"],
+            )
+            selected_orderbooks[ob.name] = ob
 
     # Save configuration
-    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, orderbook_formula, k)
+    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline)
 
 # Main content
 if not selected_orderbooks:
@@ -481,23 +475,22 @@ else:
                     results = {}
 
                     # Run simulations
-                    formula_label = f"curved (k={k})" if orderbook_formula == "curved" else "linear"
-                    st.info(f"Orderbook Parameters (slippage formula: {formula_label}):")
+                    st.info("Orderbook Parameters:")
                     for orderbook_name, orderbook in selected_orderbooks.items():
                         if orderbook is not None:
-                            depth = orderbook.get('depth')
-                            width = orderbook.get('width')
-                            spread = orderbook.get('spread')
+                            depth = orderbook.depth
+                            width = orderbook.width
+                            spread = orderbook.spread
                             # Handle tuples
-                            if isinstance(depth, (list, tuple)):
+                            if isinstance(depth, tuple):
                                 depth_display = f"({depth[0]:,}, {depth[1]:,})"
                             else:
                                 depth_display = f"{depth:,}"
-                            if isinstance(width, (list, tuple)):
+                            if isinstance(width, tuple):
                                 width_display = f"({width[0]}, {width[1]})"
                             else:
                                 width_display = f"{width}"
-                            if isinstance(spread, (list, tuple)):
+                            if isinstance(spread, tuple):
                                 spread_display = f"({spread[0]}, {spread[1]})"
                             else:
                                 spread_display = f"{spread}"
@@ -509,8 +502,6 @@ else:
                             lambda_upper=lambda_upper,
                             lambda_lower=lambda_lower,
                             orderbook=orderbook,
-                            orderbook_formula=orderbook_formula,
-                            k=k,
                             prepared_data=binance_data,
                             timestamps=binance_data["timestamp"].values
                         )

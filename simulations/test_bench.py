@@ -1,6 +1,7 @@
 # Imports
 import pandas as pd
 
+from functions.orderbook import Orderbook
 from functions.plot_utils import plot_results
 from functions.price_spillover_simulations import run_simulation
 
@@ -14,21 +15,14 @@ lambda_lower = 1.25  # lower boundary
 
 # Orderbooks
 # width and spread in %
-orderbook_formula = "curved"
-k = 0.5
-
-orderbooks = {
-    "no_orderbook": None,
-    "Deep Narrow Tight": {"depth": 50_000_000, "width": 1, "spread": 0.005},
-    "Deep Narrow Broad": {"depth": 50_000_000, "width": 1, "spread": 0.05},
-    "Deep Wide Tight": {"depth": 50_000_000, "width": 10, "spread": 0.005},
-    "Shallow Narrow Tight": {"depth": 5_000_000, "width": 1, "spread": 0.005},
-    "Asymmetrical Depth": {
-        "depth": (30_000_000, 50_000_000),
-        "width": 1,
-        "spread": 0.005,
-    },
-}
+orderbooks = [
+    None,
+    Orderbook(name="Deep Narrow Tight", depth=50_000_000, width=1, spread=0.005, k=0.3),
+    Orderbook(name="Deep Narrow Broad", depth=50_000_000, width=1, spread=0.05, k=0.3),
+    Orderbook(name="Deep Wide Tight",   depth=50_000_000, width=10, spread=0.005, k=0.3),
+    Orderbook(name="Shallow Narrow Tight", depth=5_000_000, width=1, spread=0.005, k=0.3),
+    Orderbook(name="Asymmetrical Depth", depth=(30_000_000, 50_000_000), width=1, spread=0.005, k=0.3),
+]
 
 # Display options
 show_hover_info = True
@@ -54,15 +48,14 @@ if __name__ == "__main__":
     # Simulation
     results = {}
 
-    for orderbook_name, orderbook in orderbooks.items():
+    for orderbook in orderbooks:
+        orderbook_name = orderbook.name if orderbook is not None else "No Orderbook"
         print(f"Running simulation for {orderbook_name}")
         result = run_simulation(
             lambda_target=lambda_target,
             lambda_upper=lambda_upper,
             lambda_lower=lambda_lower,
             orderbook=orderbook,
-            orderbook_formula=orderbook_formula,
-            k=k,
             prepared_data=binance_data,
             timestamps=binance_data["timestamp"].values,
         )

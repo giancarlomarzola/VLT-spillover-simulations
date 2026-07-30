@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
+from functions.orderbook import Orderbook
 from functions.plot_utils import plot_results
 from functions.price_spillover_simulations import run_simulation
 
@@ -19,14 +20,11 @@ start_exposure_down = -60_000_000
 
 # Orderbooks
 # width and spread in %
-orderbook_formula = "curved"
-k = 0.5
-
-orderbooks = {
-    "No Orderbook": None,
-    "Deep Narrow Tight"     : {"depth":50_000_000, "width":1,  "spread":0.005},
-    "Deep Narrow Broad"     : {"depth":50_000_000, "width":1,  "spread":0.05},
-}
+orderbooks = [
+    None,
+    Orderbook(name="Deep Narrow Tight", depth=50_000_000, width=1, spread=0.005, k=0.5),
+    Orderbook(name="Deep Narrow Broad", depth=50_000_000, width=1, spread=0.05, k=0.5),
+]
 
 # Display options
 show_hover_info = True
@@ -83,18 +81,20 @@ timestamps, price_series = generate_price_series(
 )
 
 
+# TODO: Introduce eta parameter - manual shocks to otherwise stable price series
+
+
 # Simulation
 results = {}
 
-for orderbook_name, orderbook in orderbooks.items():
+for orderbook in orderbooks:
+    orderbook_name = orderbook.name if orderbook is not None else "No Orderbook"
     print(f"Running simulation for {orderbook_name}")
     result = run_simulation(
         lambda_target=lambda_target,
         lambda_upper=lambda_upper,
         lambda_lower=lambda_lower,
         orderbook=orderbook,
-        orderbook_formula=orderbook_formula,
-        k=k,
         price_series=price_series,
         start_nav_up=start_nav_up,
         start_exposure_up=start_exposure_up,

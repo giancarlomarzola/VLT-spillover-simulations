@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from functions.orderbook import Orderbook
+
 # (internal_key, output_column_suffix) — order matches the original schema
 _TOKEN_VARS = [
     ("v", "v"), # NAV
@@ -70,8 +72,10 @@ def _curved_slippage(d, depth, spread, width, k):
     """
     if d == 0:
         return 0.0
-    D, S, W, K = ((depth[1], spread[1], width[1], k[1]) if d > 0
-                  else (depth[0], spread[0], width[0], k[0]))
+    D, S, W, K = (
+        (depth[1], spread[1], width[1], k[1]) if d > 0
+        else (depth[0], spread[0], width[0], k[0])
+        )
     x = abs(d)
     if D == 0 or x > D:
         s = W
@@ -114,8 +118,6 @@ def run_simulation(
     lambda_upper, # upper boundary
     lambda_lower, # lower boundary
     orderbook=None,
-    orderbook_formula="curved", # "linear" or "curved"
-    k=0.3, # curvature param (scalar or (bid, ask) pair); required if orderbook_formula="curved"
     prepared_data=None,
     price_series=None,
     start_nav_up=None,
@@ -132,19 +134,11 @@ def run_simulation(
     lambda_upper: upper boundary
     lambda_lower: lower boundary
 
-    orderbook: dict with keys "depth", "spread", "width", each a scalar
-    (symmetric book) or a (bid, ask) pair (asymmetric book), in the units
-    of the source equations (depth in tokens). Leave as None to run with
-    no price impact. Slippage and the price multiplier follow the
-    one-period execution lag of eqn 5: a rebalance at t only moves the
-    price used at t+1.
-
-    orderbook_formula: "linear" (default) or "curved", selecting which
-    synthetic orderbook inversion is used to compute slippage.
-
-    k: curvature parameter for the curved orderbook, a scalar (symmetric)
-    or (bid, ask) pair (asymmetric). Required when orderbook_formula is
-    "curved"; ignored otherwise.
+    orderbook: Orderbook instance with depth, spread, width, and k (each scalar for
+    symmetric or (bid, ask) tuple for asymmetric), in the units of the source equations
+    (depth in tokens). Leave as None to run with no price impact. Slippage and the price
+    multiplier follow the one-period execution lag of eqn 5: a rebalance at t only moves
+    the price used at t+1. k=1 gives linear slippage; lower k gives more convex curve.
 
     prepared_data: optional pre-loaded DataFrame with price and basket primitives.
     If provided, uses this directly and ignores price_series/start_* params.
@@ -156,10 +150,6 @@ def run_simulation(
     start_exposure_down: initial notional exposure of DOWN token.
     timestamps: optional timestamps for each price point (array-like).
     """
-    if orderbook_formula not in ("linear", "curved"):
-        raise ValueError(f"orderbook_formula must be 'linear' or 'curved', got {orderbook_formula!r}")
-    if orderbook_formula == "curved" and orderbook is not None and k is None:
-        raise ValueError("k is required when orderbook_formula='curved'")
 
     if prepared_data is None:
         if price_series is None or any(x is None for x in [start_nav_up, start_exposure_up, start_nav_down, start_exposure_down]):
@@ -174,13 +164,10 @@ def run_simulation(
 
     has_orderbook = orderbook is not None
     if has_orderbook:
-        depth = _as_side_pair(orderbook["depth"])
-        spread_pair = _as_side_pair(orderbook["spread"])
-        width_pair = _as_side_pair(orderbook["width"])
-        spread = (spread_pair[0] / 100, spread_pair[1] / 100)
-        width = (width_pair[0] / 100, width_pair[1] / 100)
-        if orderbook_formula == "curved":
-            k_pair = _as_side_pair(k)
+        depth = orderbook.depth
+        spread = (orderbook.spread[0] / 100, orderbook.spread[1] / 100)
+        width = (orderbook.width[0] / 100, orderbook.width[1] / 100)
+        k_pair = orderbook.k
 
     # t = 0: Seed from provided params or prepared_data
     if prepared_data is None:
@@ -256,10 +243,7 @@ def run_simulation(
             else:
                 # Execution uncapped: normal slippage
                 scale = 1.0
-                if orderbook_formula == "curved":
-                    s_t = _curved_slippage(d_target, depth_tokens, spread, width, k_pair)
-                else:
-                    s_t = _linear_slippage(d_target, depth_tokens, spread, width)
+                s_t = _curved_slippage(d_target, depth_tokens, spread, width, k_pair)
         else:
             scale = 1.0
             s_t = 0.0
