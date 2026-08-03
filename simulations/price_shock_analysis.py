@@ -29,13 +29,13 @@ print(f"99th quantile:\t  {log_returns_bp.quantile(0.99)}")
 eta_lower = log_returns_bp.quantile(0.01)
 eta_upper = log_returns_bp.quantile(0.99)
 
-df["log_shocks"] = log_returns_bp.where((log_returns_bp < eta_lower) | (log_returns_bp > eta_upper), 0)
+df["log_shocks_bp"] = log_returns_bp.where((log_returns_bp < eta_lower) | (log_returns_bp > eta_upper), 0)
 
 print("\n\nseries of log_returns that exceed eta:")
-display(df[["timestamp", "log_shocks"]][df["log_shocks"] != 0])
+display(df[["timestamp", "log_shocks_bp"]][df["log_shocks_bp"] != 0])
 
 # Scatter plot of log returns, highlighting shocks (outside eta_lower/eta_upper) in red
-is_shock = df["log_shocks"] != 0
+is_shock = df["log_shocks_bp"] != 0
 
 fig, ax = plt.subplots(figsize=(12, 6))
 ax.scatter(
@@ -89,16 +89,26 @@ end_time = pd.Timestamp("2021-05-19 6:00:00", tz="UTC")
 
 df_unshocked = pd.read_parquet(DATA_PROCESSED / processed_filename(currency, frequency, start_time, end_time))
 
+shock_factor = np.exp((df["log_shocks_bp"] / 100).cumsum())
+df_unshocked["price_shocked"] = df_unshocked["price"] * shock_factor.to_numpy()
+
+
+# Plot prices from before crash, during crash, and before crash with artificial shocks
 fig, ax = plt.subplots(figsize=(12, 6))
 ax.plot(
-    df_unshocked.index, df_unshocked["price"], 
-    color=TRACE_COLORS[0], linewidth=1, 
+    df_unshocked.index, df_unshocked["price"],
+    color=TRACE_COLORS[0], linewidth=1,
     label="04:00 - 06:00 price"
     )
 ax.plot(
-    df.index, df["price"], 
-    color=TRACE_COLORS[1], linewidth=1, 
+    df.index, df["price"],
+    color=TRACE_COLORS[1], linewidth=1,
     label="12:00 - 14:00 price"
+    )
+ax.plot(
+    df_unshocked.index, df_unshocked["price_shocked"],
+    color=TRACE_COLORS[2], linewidth=1,
+    label="04:00 - 06:00 price (shocked)"
     )
 
 ax.set_ylim(0, 1.2 * df["price"].max())
