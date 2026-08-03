@@ -1,15 +1,17 @@
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from IPython.display import display
 
+from utils.data_io import processed_filename
 from utils.paths import DATA_PROCESSED
 from utils.plotting import TRACE_COLORS
 
 currency = "btc"
-frequency = "50ms"
+frequency = "1s"
 
-df = pd.read_parquet(DATA_PROCESSED / f"{currency}_{frequency}_processed.parquet")
+df = pd.read_parquet(DATA_PROCESSED / processed_filename(currency, frequency))
 
 df["log_return"] = np.log(df["price"] / df["price"].shift(1))
 
@@ -30,14 +32,14 @@ eta_upper = log_returns_bp.quantile(0.99)
 df["log_shocks"] = log_returns_bp.where((log_returns_bp < eta_lower) | (log_returns_bp > eta_upper), 0)
 
 print("\n\nseries of log_returns that exceed eta:")
-display(df["log_shocks"][df["log_shocks"] != 0])
+display(df[["timestamp", "log_shocks"]][df["log_shocks"] != 0])
 
 # Scatter plot of log returns, highlighting shocks (outside eta_lower/eta_upper) in red
 is_shock = df["log_shocks"] != 0
 
 fig, ax = plt.subplots(figsize=(12, 6))
 ax.scatter(
-    log_returns_bp.index[~is_shock],
+    df["timestamp"][~is_shock],
     log_returns_bp[~is_shock],
     color=TRACE_COLORS[0],
     s=1,
@@ -45,7 +47,7 @@ ax.scatter(
     alpha=0.8,
 )
 ax.scatter(
-    log_returns_bp.index[is_shock],
+    df["timestamp"][is_shock],
     log_returns_bp[is_shock],
     color=TRACE_COLORS[1],
     s=1,
@@ -56,14 +58,14 @@ ax.scatter(
 ax.axhline(eta_upper, color="gray", linewidth=1, linestyle="dotted")
 ax.axhline(eta_lower, color="gray", linewidth=1, linestyle="dotted")
 ax.text(
-    log_returns_bp.index[0],
+    df["timestamp"].iloc[0],
     eta_upper,
     f"eta_upper = {eta_upper:.4f}",
     va="bottom",
     color="gray",
 )
 ax.text(
-    log_returns_bp.index[0],
+    df["timestamp"].iloc[0],
     eta_lower,
     f"eta_lower = {eta_lower:.4f}",
     va="top",
@@ -72,8 +74,37 @@ ax.text(
 
 ax.set_ylim(5 * eta_lower, 5 * eta_upper)
 ax.set_title("Log Returns (bp) with Shock Thresholds")
-ax.set_xlabel("Index")
+ax.set_xlabel("Timestamp")
 ax.set_ylabel("Log Return (bp)")
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+ax.legend()
+
+plt.show()
+
+
+# Load binance data for different time to apply shocks to
+
+start_time = pd.Timestamp("2021-05-19 4:00:00", tz="UTC")
+end_time = pd.Timestamp("2021-05-19 6:00:00", tz="UTC")
+
+df_unshocked = pd.read_parquet(DATA_PROCESSED / processed_filename(currency, frequency, start_time, end_time))
+
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.plot(
+    df_unshocked.index, df_unshocked["price"], 
+    color=TRACE_COLORS[0], linewidth=1, 
+    label="04:00 - 06:00 price"
+    )
+ax.plot(
+    df.index, df["price"], 
+    color=TRACE_COLORS[1], linewidth=1, 
+    label="12:00 - 14:00 price"
+    )
+
+ax.set_ylim(0, 1.2 * df["price"].max())
+ax.set_title("Unshocked Price")
+ax.set_xlabel("Index")
+ax.set_ylabel("Price")
 ax.legend()
 
 plt.show()
