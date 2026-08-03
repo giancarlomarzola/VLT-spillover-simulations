@@ -3,6 +3,7 @@ data/*
 !data/.keep
 .venv/
 __pycache__
+utils/api_key.py
 
 *.acn
 *.acr
