@@ -4,16 +4,13 @@ class Orderbook:
 
     Parameters:
         name: Human-readable name for this orderbook.
-        depth_bid: Market depth on bid side in tokens.
-        depth_ask: Market depth on ask side in tokens.
-        width_bid: Maximum slippage at full depth on bid side (in decimal, e.g., 0.01 for 1%).
-        width_ask: Maximum slippage at full depth on ask side (in decimal).
-        spread_bid: Spread at zero depth on bid side (in decimal, e.g., 0.005 for 0.5%).
-        spread_ask: Spread at zero depth on ask side (in decimal).
-        k_bid: Curvature parameter for slippage formula on bid side. k=1 gives linear slippage; lower k gives more convex curve.
-        k_ask: Curvature parameter for slippage formula on ask side.
-        resilience_bid: Resilience parameter on bid side (float between 0 and 1). 1=perfect resilience.
-        resilience_ask: Resilience parameter on ask side.
+        depth_bid/ask: Market depth on bid/ask side in USDT.
+        width_bid/ask: Maximum slippage at full depth on bid/ask side (in decimal, e.g., 0.01 for 1%).
+        spread_bid/ask: Spread at zero depth on bid side (in decimal, e.g., 0.005 for 0.5%).
+        k_bid/ask: Curvature parameter for slippage formula on bid/ask side. 
+            k=1 gives linear slippage; k<1 gives convex curve; k>1 gives concave curve
+        resilience_bid/ask: Proportion of bid/ask side depth restored at each step 
+            (float between 0 and 1). 1=perfect resilience.
     """
 
     def __init__(

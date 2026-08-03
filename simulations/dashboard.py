@@ -5,12 +5,8 @@ streamlit run simulations/dashboard.py
 """
 
 import json
-import sys
 import uuid
 from pathlib import Path
-
-# Add project root to path before importing local modules
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
 import streamlit as st
@@ -694,7 +690,9 @@ else:
                 for orderbook_name, orderbook in selected_orderbooks.items():
                     if orderbook is not None:
                         st.write(
-                            f"**{orderbook_name}** → Depth: ({orderbook.depth_bid:,}, {orderbook.depth_ask:,}), Width: ({orderbook.width_bid}, {orderbook.width_ask}), Spread: ({orderbook.spread_bid}, {orderbook.spread_ask})"
+                            f"**{orderbook_name}** → Depth: ({orderbook.depth_bid:,}, {orderbook.depth_ask:,}), \
+                            Width: ({orderbook.width_bid}, {orderbook.width_ask}), \
+                            Spread: ({orderbook.spread_bid}, {orderbook.spread_ask})"
                         )
 
                     result = run_simulation(

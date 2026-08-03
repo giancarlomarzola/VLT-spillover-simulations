@@ -129,7 +129,8 @@ def run_simulation(
             ]
         ):
             raise ValueError(
-                "Must provide either 'prepared_data' or all of: price_series, start_nav_up, start_exposure_up, start_nav_down, start_exposure_down"
+                "Must provide either 'prepared_data' or all of: " \
+                "price_series, start_nav_up, start_exposure_up, start_nav_down, start_exposure_down"
             )
         price = np.asarray(price_series, dtype=float)
     else:
