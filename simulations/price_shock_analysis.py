@@ -16,31 +16,30 @@ df = pd.read_parquet(DATA_PROCESSED / processed_filename(currency, frequency))
 df["log_return"] = np.log(df["price"] / df["price"].shift(1))
 
 # Log returns
-print("Summary statistics for log returns (in basis points)")
-log_returns_bp = (df["log_return"] * 100).copy()
-display(log_returns_bp.describe().apply("{0:,.5f}".format))
-print(f"1st quantile:\t {log_returns_bp.quantile(0.01)}")
-print(f"99th quantile:\t  {log_returns_bp.quantile(0.99)}")
+print("Summary statistics for log returns")
+display(df["log_return"].describe().apply("{0:,.5f}".format))
+print(f"1st quantile:\t {df['log_return'].quantile(0.01)}")
+print(f"99th quantile:\t  {df['log_return'].quantile(0.99)}")
 
 
 # Get vector with only shock returns (= returns > some cutoff e.g. i-th percentile)
 # Maybe for future: Get cutoff value from stable series and apply to crash series
 
-eta_lower = log_returns_bp.quantile(0.01)
-eta_upper = log_returns_bp.quantile(0.99)
+eta_lower = df["log_return"].quantile(0.01)
+eta_upper = df["log_return"].quantile(0.99)
 
-df["log_shocks_bp"] = log_returns_bp.where((log_returns_bp < eta_lower) | (log_returns_bp > eta_upper), 0)
+df["log_shocks"] = df["log_return"].where((df["log_return"] < eta_lower) | (df["log_return"] > eta_upper), 0)
 
 print("\n\nseries of log_returns that exceed eta:")
-display(df[["timestamp", "log_shocks_bp"]][df["log_shocks_bp"] != 0])
+display(df[["timestamp", "log_shocks"]][df["log_shocks"] != 0])
 
 # Scatter plot of log returns, highlighting shocks (outside eta_lower/eta_upper) in red
-is_shock = df["log_shocks_bp"] != 0
+is_shock = df["log_shocks"] != 0
 
 fig, ax = plt.subplots(figsize=(12, 6))
 ax.scatter(
     df["timestamp"][~is_shock],
-    log_returns_bp[~is_shock],
+    df["log_return"][~is_shock],
     color=TRACE_COLORS[0],
     s=1,
     label=f"Normal (n={(~is_shock).sum():,})",
@@ -48,7 +47,7 @@ ax.scatter(
 )
 ax.scatter(
     df["timestamp"][is_shock],
-    log_returns_bp[is_shock],
+    df["log_return"][is_shock],
     color=TRACE_COLORS[1],
     s=1,
     label=f"Shock (n={is_shock.sum():,})",
@@ -73,9 +72,9 @@ ax.text(
 )
 
 ax.set_ylim(5 * eta_lower, 5 * eta_upper)
-ax.set_title("Log Returns (bp) with Shock Thresholds")
+ax.set_title("Log Returns with Shock Thresholds")
 ax.set_xlabel("Timestamp")
-ax.set_ylabel("Log Return (bp)")
+ax.set_ylabel("Log Return")
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
 ax.legend()
 
@@ -89,7 +88,7 @@ end_time = pd.Timestamp("2021-05-19 6:00:00", tz="UTC")
 
 df_unshocked = pd.read_parquet(DATA_PROCESSED / processed_filename(currency, frequency, start_time, end_time))
 
-shock_factor = np.exp((df["log_shocks_bp"] / 100).cumsum())
+shock_factor = np.exp(df["log_shocks"].cumsum())
 df_unshocked["price_shocked"] = df_unshocked["price"] * shock_factor.to_numpy()
 
 
