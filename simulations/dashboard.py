@@ -144,9 +144,7 @@ if "plot_resample_freq" not in st.session_state:
     st.session_state.plot_resample_freq = "15s"
 if "currency" not in st.session_state:
     st.session_state.currency = (
-        saved_config.get("currency")
-        if saved_config
-        else (saved_defaults.get("currency") if saved_defaults else "btc")
+        saved_config.get("currency") if saved_config else (saved_defaults.get("currency") if saved_defaults else "btc")
     )
 if "frequency" not in st.session_state:
     st.session_state.frequency = (
@@ -155,9 +153,9 @@ if "frequency" not in st.session_state:
         else (saved_defaults.get("frequency") if saved_defaults else "30s")
     )
 if "show_hover" not in st.session_state:
-    st.session_state.show_hover = (
-        saved_config.get("show_hover") if saved_config else None
-    ) or (saved_defaults.get("show_hover") if saved_defaults else False)
+    st.session_state.show_hover = (saved_config.get("show_hover") if saved_config else None) or (
+        saved_defaults.get("show_hover") if saved_defaults else False
+    )
 
 
 def reset_plot_resample():
@@ -207,20 +205,12 @@ with st.sidebar:
     # Build resample options: raw or frequencies strictly greater than simulation frequency
     all_resample_options = ["raw"] + FREQUENCIES + ["5min", "15min"]
     sim_freq_seconds = frequency_to_seconds(frequency)
-    resample_options = ["raw"] + [
-        f
-        for f in all_resample_options[1:]
-        if frequency_to_seconds(f) > sim_freq_seconds
-    ]
-    resample_options = list(
-        dict.fromkeys(resample_options)
-    )  # Remove duplicates while preserving order
+    resample_options = ["raw"] + [f for f in all_resample_options[1:] if frequency_to_seconds(f) > sim_freq_seconds]
+    resample_options = list(dict.fromkeys(resample_options))  # Remove duplicates while preserving order
 
     # Use session state value if it's in the available options, otherwise default to "raw"
     if st.session_state.plot_resample_freq in resample_options:
-        default_resample_index = resample_options.index(
-            st.session_state.plot_resample_freq
-        )
+        default_resample_index = resample_options.index(st.session_state.plot_resample_freq)
     else:
         default_resample_index = 0  # Default to "raw"
 
@@ -232,14 +222,12 @@ with st.sidebar:
     )
     st.session_state.plot_resample_freq = plot_resample_freq
 
-    default_show_markers = (
-        saved_config.get("show_markers") if saved_config else None
-    ) or (saved_defaults.get("show_markers") if saved_defaults else True)
+    default_show_markers = (saved_config.get("show_markers") if saved_config else None) or (
+        saved_defaults.get("show_markers") if saved_defaults else True
+    )
     show_markers = st.checkbox("Show markers on lines", value=default_show_markers)
 
-    default_leverage_timing = (
-        saved_config.get("leverage_timing") if saved_config else None
-    ) or (
+    default_leverage_timing = (saved_config.get("leverage_timing") if saved_config else None) or (
         saved_defaults.get("leverage_timing") if saved_defaults else "After Rebalance"
     )
     leverage_timing = st.selectbox(
@@ -251,18 +239,18 @@ with st.sidebar:
 
     # Rebalancing parameters
     st.subheader("Rebalancing Strategy")
-    default_lambda_target = (
-        saved_config.get("lambda_target") if saved_config else None
-    ) or (saved_defaults.get("lambda_target") if saved_defaults else False)
-    default_lambda_value = (
-        saved_config.get("lambda_value") if saved_config else None
-    ) or (saved_defaults.get("lambda_value") if saved_defaults else 1.5)
-    default_lambda_upper = (
-        saved_config.get("lambda_upper") if saved_config else None
-    ) or (saved_defaults.get("lambda_upper") if saved_defaults else 4.0)
-    default_lambda_lower = (
-        saved_config.get("lambda_lower") if saved_config else None
-    ) or (saved_defaults.get("lambda_lower") if saved_defaults else 1.25)
+    default_lambda_target = (saved_config.get("lambda_target") if saved_config else None) or (
+        saved_defaults.get("lambda_target") if saved_defaults else False
+    )
+    default_lambda_value = (saved_config.get("lambda_value") if saved_config else None) or (
+        saved_defaults.get("lambda_value") if saved_defaults else 1.5
+    )
+    default_lambda_upper = (saved_config.get("lambda_upper") if saved_config else None) or (
+        saved_defaults.get("lambda_upper") if saved_defaults else 4.0
+    )
+    default_lambda_lower = (saved_config.get("lambda_lower") if saved_config else None) or (
+        saved_defaults.get("lambda_lower") if saved_defaults else 1.25
+    )
 
     # Strategy toggle
     rebalancing_mode = st.radio(
@@ -277,9 +265,7 @@ with st.sidebar:
 
     # Target value field (only show if Target mode)
     if lambda_target:
-        lambda_value = st.number_input(
-            "Lambda target value", value=default_lambda_value, min_value=0.0, step=0.1
-        )
+        lambda_value = st.number_input("Lambda target value", value=default_lambda_value, min_value=0.0, step=0.1)
     else:
         lambda_value = None
 
@@ -332,9 +318,9 @@ with st.sidebar:
         help="0: no resilience (orderbook doesn't recover). 1: perfect resilience.",
     )
 
-    default_include_baseline = (
-        saved_config.get("include_baseline") if saved_config else None
-    ) or (saved_defaults.get("include_baseline") if saved_defaults else True)
+    default_include_baseline = (saved_config.get("include_baseline") if saved_config else None) or (
+        saved_defaults.get("include_baseline") if saved_defaults else True
+    )
     include_baseline = st.checkbox(
         "Include baseline (no orderbook)",
         value=default_include_baseline,
@@ -442,9 +428,7 @@ with st.sidebar:
         with col4:
             if st.button("🗑️", key=f"delete_{ob_id}", help="Delete this orderbook"):
                 st.session_state.orderbooks_list = [
-                    ob
-                    for ob in st.session_state.orderbooks_list
-                    if ob.get("_id") != ob_id
+                    ob for ob in st.session_state.orderbooks_list if ob.get("_id") != ob_id
                 ]
                 st.rerun()
 
@@ -585,9 +569,7 @@ with st.sidebar:
         st.divider()
 
     # Add row button
-    if len(st.session_state.orderbooks_list) < 8 and st.button(
-        "+ Add Orderbook", type="primary"
-    ):
+    if len(st.session_state.orderbooks_list) < 8 and st.button("+ Add Orderbook", type="primary"):
         st.session_state.orderbooks_list.append(
             {
                 "_id": str(uuid.uuid4()),
@@ -700,14 +682,10 @@ else:
                 if frequency == "Tick":
                     filepath = DATA_PROCESSED / f"{currency}_tick_processed.parquet"
                 else:
-                    filepath = (
-                        DATA_PROCESSED / f"{currency}_{frequency}_processed.parquet"
-                    )
+                    filepath = DATA_PROCESSED / f"{currency}_{frequency}_processed.parquet"
 
                 binance_data = pd.read_parquet(filepath)
-                binance_data["timestamp"] = pd.to_datetime(
-                    binance_data["timestamp"], utc=True
-                )
+                binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)
 
                 results = {}
 
@@ -756,9 +734,7 @@ else:
                             cols_to_keep.append("depth_bid")
                         if "depth_ask" in resampled.columns:
                             cols_to_keep.append("depth_ask")
-                        resampled_results[name] = resampled[cols_to_keep].reset_index(
-                            drop=True
-                        )
+                        resampled_results[name] = resampled[cols_to_keep].reset_index(drop=True)
 
                         # Combined rebalance size = |UP delta| + |DOWN delta|. actual_total_delta is
                         # the *signed* sum of both sides, which largely cancels since UP and DOWN
@@ -766,8 +742,7 @@ else:
                         # near-zero, sign-flipping spikes. Summing the absolute values per side gives
                         # the actual combined trade size, always >= 0.
                         result_with_ts["rebalance_magnitude"] = (
-                            result_with_ts["actual_delta_up"].abs()
-                            + result_with_ts["actual_delta_down"].abs()
+                            result_with_ts["actual_delta_up"].abs() + result_with_ts["actual_delta_down"].abs()
                         )
                         magnitude_by_bucket = (
                             result_with_ts[["timestamp", "rebalance_magnitude"]]
@@ -776,9 +751,7 @@ else:
                             .sum()
                             .reset_index()
                         )
-                        rebalance_magnitudes[name] = magnitude_by_bucket[
-                            "rebalance_magnitude"
-                        ].values
+                        rebalance_magnitudes[name] = magnitude_by_bucket["rebalance_magnitude"].values
                 else:
                     # For raw data, just extract price_multiplier from each result
                     for name, result in results.items():
@@ -797,8 +770,7 @@ else:
                         result_copy["timestamp"] = binance_data["timestamp"].values
                         resampled_results[name] = result_copy
                         rebalance_magnitudes[name] = (
-                            result["actual_delta_up"].abs()
-                            + result["actual_delta_down"].abs()
+                            result["actual_delta_up"].abs() + result["actual_delta_down"].abs()
                         ).values
 
                 # Plot simulations using shared plotting utility
@@ -809,9 +781,7 @@ else:
                 plot_results_dict = {}
                 for name, result in resampled_results.items():
                     plot_result = result.copy()
-                    plot_result["simulated_price"] = (
-                        plot_data["price"].values * result["price_multiplier"].values
-                    )
+                    plot_result["simulated_price"] = plot_data["price"].values * result["price_multiplier"].values
                     plot_results_dict[name] = plot_result
 
                 price_fig, leverage_fig = plot_results(

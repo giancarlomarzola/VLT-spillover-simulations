@@ -32,9 +32,7 @@ def fetch_hour(market: str, instrument: str, hour_ts: int) -> list[dict]:
     return data["Data"]
 
 
-def fetch_range(
-    market: str, instrument: str, start_ts: int, end_ts: int, pause: float = 0.2
-) -> pd.DataFrame:
+def fetch_range(market: str, instrument: str, start_ts: int, end_ts: int, pause: float = 0.2) -> pd.DataFrame:
     """Fetch every hour between start_ts and end_ts (inclusive), both
     Unix timestamps aligned to the hour."""
     all_trades = []

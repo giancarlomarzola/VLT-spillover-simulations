@@ -20,11 +20,11 @@ TRACE_COLORS = [
 
 
 def resample_data(data, resample_freq):
-    """Resample time-series data to a coarser frequency by taking the last value in each period.
+    """Resample time-series data by taking the last value in each period.
 
     Args:
         data: DataFrame with 'timestamp' column
-        resample_freq: Resample frequency string (e.g., '15s', '1min') or 'raw' for no resampling
+        resample_freq: string (e.g., '15s', '1min') or 'raw' for no resampling
 
     Returns:
         Resampled DataFrame
@@ -84,17 +84,10 @@ def plot_results(
         if "raw_price" in first_df.columns:
             market_price = first_df["raw_price"].values
         else:
-            raise ValueError(
-                "market_price must be provided or 'raw_price' must be in dataframes"
-            )
+            raise ValueError("market_price must be provided or 'raw_price' must be in dataframes")
 
     # Resample data if requested
-    if (
-        resample_freq
-        and resample_freq != "raw"
-        and x_axis is not None
-        and len(x_axis) > 0
-    ):
+    if resample_freq and resample_freq != "raw" and x_axis is not None and len(x_axis) > 0:
         temp_df = pd.DataFrame({"timestamp": x_axis, "market_price": market_price})
         temp_df["timestamp"] = pd.to_datetime(temp_df["timestamp"], utc=True)
         temp_df.set_index("timestamp", inplace=True)
@@ -131,9 +124,7 @@ def plot_results(
             if "actual_total_delta" in df.columns:
                 rebalance_magnitudes[name] = df["actual_total_delta"].abs().values
             elif "actual_delta_up" in df.columns and "actual_delta_down" in df.columns:
-                rebalance_magnitudes[name] = (
-                    df["actual_delta_up"].abs() + df["actual_delta_down"].abs()
-                ).values
+                rebalance_magnitudes[name] = (df["actual_delta_up"].abs() + df["actual_delta_down"].abs()).values
             else:
                 rebalance_magnitudes[name] = None
 
@@ -149,9 +140,7 @@ def plot_results(
         elif "price_multiplier" in df.columns:
             y_data = market_price * df["price_multiplier"].values
         else:
-            raise ValueError(
-                "Dataframe must contain 'simulated_price' or 'price_multiplier' column"
-            )
+            raise ValueError("Dataframe must contain 'simulated_price' or 'price_multiplier' column")
 
         trace_mode = "lines+markers" if show_markers else "lines"
         price_fig.add_trace(
@@ -161,11 +150,7 @@ def plot_results(
                 mode=trace_mode,
                 name=name,
                 line={"color": color, "width": 2},
-                marker=(
-                    {"size": 6, "line": {"width": 1, "color": "white"}}
-                    if show_markers
-                    else None
-                ),
+                marker=({"size": 6, "line": {"width": 1, "color": "white"}} if show_markers else None),
                 hovertemplate=(
                     f"<b>{name}</b><br>Time: %{{x|%H:%M:%S}}<br>Price: $%{{y:.2f}}<extra></extra>"
                     if show_hover
@@ -223,11 +208,7 @@ def plot_results(
     # Setup layout
     yaxis_title = f"{currency} Price (USDT)" if currency else "Price (USDT)"
     layout_dict = {
-        "title": (
-            f"{title_prefix} Price Simulations Comparison"
-            if title_prefix
-            else "Price Simulations Comparison"
-        ),
+        "title": (f"{title_prefix} Price Simulations Comparison" if title_prefix else "Price Simulations Comparison"),
         "title_x": 0.5,
         "title_xanchor": "center",
         "title_font_size": 28,
@@ -245,9 +226,7 @@ def plot_results(
 
     # Add secondary y-axis if rebalance_magnitudes have data
     has_rebalance_data = (
-        any(mag is not None for mag in rebalance_magnitudes.values())
-        if rebalance_magnitudes
-        else False
+        any(mag is not None for mag in rebalance_magnitudes.values()) if rebalance_magnitudes else False
     )
     if has_rebalance_data:
         layout_dict["yaxis2"] = {
@@ -304,9 +283,7 @@ def plot_results(
         tickfont_color="black",
     )
     # Set y-axis to start from 0 and go to 1.2x max price
-    max_price = (
-        market_price.max() if hasattr(market_price, "max") else max(market_price)
-    )
+    max_price = market_price.max() if hasattr(market_price, "max") else max(market_price)
     price_fig.update_yaxes(
         showgrid=True,
         gridwidth=1,
@@ -369,11 +346,7 @@ def plot_results(
             )
 
     leverage_fig.update_layout(
-        title=(
-            f"{title_prefix} Leverage {leverage_timing}"
-            if title_prefix
-            else f"Leverage {leverage_timing}"
-        ),
+        title=(f"{title_prefix} Leverage {leverage_timing}" if title_prefix else f"Leverage {leverage_timing}"),
         title_x=0.5,
         title_xanchor="center",
         title_font_size=28,
@@ -457,12 +430,7 @@ def plot_orderbook_depth(
             x_axis = result_timestamps
 
     # Resample data if requested
-    if (
-        resample_freq
-        and resample_freq != "raw"
-        and x_axis is not None
-        and len(x_axis) > 0
-    ):
+    if resample_freq and resample_freq != "raw" and x_axis is not None and len(x_axis) > 0:
         resampled_results_dict = {}
         for name, df in results_dict.items():
             df_temp = df.copy()
@@ -548,11 +516,7 @@ def plot_orderbook_depth(
         )
 
     depth_fig.update_layout(
-        title=(
-            f"{title_prefix} Orderbook Depth Over Time"
-            if title_prefix
-            else "Orderbook Depth Over Time"
-        ),
+        title=(f"{title_prefix} Orderbook Depth Over Time" if title_prefix else "Orderbook Depth Over Time"),
         title_x=0.5,
         title_xanchor="center",
         title_font_size=28,

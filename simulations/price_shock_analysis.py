@@ -27,9 +27,7 @@ print(f"99th quantile:\t  {log_returns_bp.quantile(0.99)}")
 eta_lower = log_returns_bp.quantile(0.01)
 eta_upper = log_returns_bp.quantile(0.99)
 
-df["log_shocks"] = log_returns_bp.where(
-    (log_returns_bp < eta_lower) | (log_returns_bp > eta_upper), 0
-)
+df["log_shocks"] = log_returns_bp.where((log_returns_bp < eta_lower) | (log_returns_bp > eta_upper), 0)
 
 print("\n\nseries of log_returns that exceed eta:")
 display(df["log_shocks"][df["log_shocks"] != 0])

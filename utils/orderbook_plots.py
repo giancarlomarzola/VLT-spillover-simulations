@@ -5,7 +5,7 @@ from core.orderbook import Orderbook
 from utils.paths import FIGURES_DIR
 
 # Orderbook formula
-k = 0.3 # for linear orderbooks = 1
+k = 0.3  # for linear orderbooks = 1
 deep, shallow = 50_000_000, 10_000_000
 narrow, wide = 0.005, 0.01
 tight, broad = 0.00005, 0.0005
@@ -93,7 +93,7 @@ plot_orderbooks = {
     ),
     "Asymmetrical": Orderbook(
         name="Asymmetrical",
-        depth_bid=deep/2,
+        depth_bid=deep / 2,
         depth_ask=deep,
         width_bid=narrow,
         width_ask=narrow,
@@ -107,7 +107,7 @@ plot_orderbooks = {
 
 def orderbook_depth_curve(x, ob):
     """
-    Cumulative depth f(z) = D * t/(k + (1-k)*t) at price deviation x (%), 
+    Cumulative depth f(z) = D * t/(k + (1-k)*t) at price deviation x (%),
     from an Orderbook's parameters.
     """
     D_bid, D_ask = ob.depth_bid, ob.depth_ask
@@ -149,9 +149,7 @@ x = np.linspace(-1.2 * max_width, 1.2 * max_width, 1000)
 for ax, (name, ob) in zip(axes, plot_orderbooks.items()):
     y = orderbook_depth_curve(x, ob)
 
-    ax.fill_between(
-        x, y, where=(x < 0), color="green", alpha=0.3, label="Cumulative Bid"
-    )
+    ax.fill_between(x, y, where=(x < 0), color="green", alpha=0.3, label="Cumulative Bid")
     ax.fill_between(x, y, where=(x > 0), color="red", alpha=0.3, label="Cumulative Ask")
     ax.plot(x[x <= 0], y[x <= 0], color="green", lw=0.7)
     ax.plot(x[x >= 0], y[x >= 0], color="red", lw=0.7)
@@ -163,7 +161,7 @@ for ax, (name, ob) in zip(axes, plot_orderbooks.items()):
     ax.set_xlabel("Price deviation (%)")
     ax.set_xlim(-1.2 * max_width, 1.2 * max_width)
     ax.set_ylabel("Depth (USD)")
-    ax.set_ylim(0, 1.2*deep)
+    ax.set_ylim(0, 1.2 * deep)
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:,.0f}"))
     ax.grid(True, alpha=0.3)
 
@@ -171,14 +169,10 @@ for ax in axes[n:]:
     ax.axis("off")
 
 orderbook_formula = "linear" if k == 1 else "concave" if k > 1 else "convex"
-formula_note = f"{orderbook_formula.capitalize()} orderbook" + (
-    f" (k={k})" if orderbook_formula != "linear" else ""
-)
+formula_note = f"{orderbook_formula.capitalize()} orderbook" + (f" (k={k})" if orderbook_formula != "linear" else "")
 fig.suptitle(f"Simulated Orderbook Archetypes — {formula_note}", fontsize=14, y=0.98)
 handles, labels = axes[0].get_legend_handles_labels()
-fig.legend(
-    handles, labels, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 0.95), fontsize=10
-)
+fig.legend(handles, labels, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 0.95), fontsize=10)
 plt.tight_layout(rect=[0, 0, 1, 0.94])
 
 if save_plots:

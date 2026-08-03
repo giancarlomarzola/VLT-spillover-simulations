@@ -154,17 +154,11 @@ def run_simulation(
             v0, x_star_0 = initial_values[side]
         else:
             if side == "up":
-                v0 = (
-                    df["nTokensUP"].iloc[0] * df["up_price"].iloc[0]
-                )  # investment in basket currency
-                x_star_0 = (
-                    df["BasketUP"].iloc[0] * df["price"].iloc[0]
-                )  # already signed
+                v0 = df["nTokensUP"].iloc[0] * df["up_price"].iloc[0]  # investment in basket currency
+                x_star_0 = df["BasketUP"].iloc[0] * df["price"].iloc[0]  # already signed
             else:
                 v0 = df["nTokensDOWN"].iloc[0] * df["down_price"].iloc[0]
-                x_star_0 = (
-                    df["BasketDOWN"].iloc[0] * df["price"].iloc[0]
-                )  # already signed
+                x_star_0 = df["BasketDOWN"].iloc[0] * df["price"].iloc[0]  # already signed
 
         # Compute initial leverage from basket
         lam_0_star = omega * x_star_0 / v0 if v0 > 0 else 0.0
@@ -210,12 +204,8 @@ def run_simulation(
         target_total = 0.0
         step_results = {}
         for side, omega in _SIDES:
-            prev = {
-                key: out[t - 1, COL[f"{suffix}_{side}"]] for key, suffix in _TOKEN_VARS
-            }
-            res = _step_token(
-                prev, omega, ret, lambda_target, lambda_upper, lambda_lower
-            )
+            prev = {key: out[t - 1, COL[f"{suffix}_{side}"]] for key, suffix in _TOKEN_VARS}
+            res = _step_token(prev, omega, ret, lambda_target, lambda_upper, lambda_lower)
             step_results[side] = res
             target_total += res["target_delta"]
 
@@ -275,9 +265,7 @@ def run_simulation(
         # Replenish orderbook depth for next iteration
         if has_orderbook:
             if timestamps is not None:
-                time_delta = (timestamps[t] - timestamps[t - 1]) / np.timedelta64(
-                    1, "s"
-                )  # Convert to seconds
+                time_delta = (timestamps[t] - timestamps[t - 1]) / np.timedelta64(1, "s")  # Convert to seconds
             else:
                 time_delta = 1.0  # Default to 1 unit of time if no timestamps provided
             orderbook.replenish(time_delta)

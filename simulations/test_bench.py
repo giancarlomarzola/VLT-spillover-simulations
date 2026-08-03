@@ -99,9 +99,7 @@ orderbooks = [
 # Load pre-processed data
 try:
     print(f"Loading {currency.upper()} at {frequency} frequency...")
-    binance_data = pd.read_parquet(
-        DATA_PROCESSED / f"{currency}_{frequency}_processed.parquet"
-    )
+    binance_data = pd.read_parquet(DATA_PROCESSED / f"{currency}_{frequency}_processed.parquet")
     binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)
     print(f"Loaded {len(binance_data)} rows")
 except FileNotFoundError:

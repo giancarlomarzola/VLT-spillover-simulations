@@ -52,19 +52,11 @@ class Orderbook:
         print(f"\n{'=' * 60}")
         print(f"Orderbook: {self.name}")
         print(f"{'=' * 60}")
-        print(
-            f"  Depth (tokens):    bid={self.depth_bid_full:>15,.0f}  ask={self.depth_ask_full:>15,.0f}"
-        )
-        print(
-            f"  Width (decimal):   bid={self.width_bid:>15.6f}  ask={self.width_ask:>15.6f}"
-        )
-        print(
-            f"  Spread (decimal):  bid={self.spread_bid:>15.6f}  ask={self.spread_ask:>15.6f}"
-        )
+        print(f"  Depth (tokens):    bid={self.depth_bid_full:>15,.0f}  ask={self.depth_ask_full:>15,.0f}")
+        print(f"  Width (decimal):   bid={self.width_bid:>15.6f}  ask={self.width_ask:>15.6f}")
+        print(f"  Spread (decimal):  bid={self.spread_bid:>15.6f}  ask={self.spread_ask:>15.6f}")
         print(f"  Curvature (k):     bid={self.k_bid:>15.6f}  ask={self.k_ask:>15.6f}")
-        print(
-            f"  Resilience:        bid={self.resilience_bid:>15.6f}  ask={self.resilience_ask:>15.6f}"
-        )
+        print(f"  Resilience:        bid={self.resilience_bid:>15.6f}  ask={self.resilience_ask:>15.6f}")
         print(f"{'=' * 60}\n")
 
     def execute_transaction(self, token_amount, effective_price):
@@ -130,11 +122,7 @@ class Orderbook:
         )
 
     def __repr__(self):
-        k_part = (
-            ""
-            if (self.k_bid == 1 and self.k_ask == 1)
-            else f", k_bid={self.k_bid}, k_ask={self.k_ask}"
-        )
+        k_part = "" if (self.k_bid == 1 and self.k_ask == 1) else f", k_bid={self.k_bid}, k_ask={self.k_ask}"
         resilience_part = (
             ""
             if (self.resilience_bid == 1 and self.resilience_ask == 1)
