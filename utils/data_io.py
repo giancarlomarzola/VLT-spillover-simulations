@@ -7,6 +7,33 @@ from utils.paths import DATA_PROCESSED, DATA_RAW
 # Available data frequencies for simulations
 FREQUENCIES = ["Tick", "50ms", "500ms", "1s", "15s", "30s", "1min"]
 
+# Default analysis window (UTC) applied when preparing processed data
+START_TIME = pd.Timestamp("2021-05-19 12:00:00", tz="UTC")
+END_TIME = pd.Timestamp("2021-05-19 14:00:00", tz="UTC")
+
+# Timestamp format used to encode the analysis window in processed filenames
+_FILENAME_TIME_FMT = "%Y%m%dT%H%M%S"
+
+
+def processed_filename(currency, freq, start_time=None, end_time=None):
+    """Build the filename for a processed data file.
+
+    Files covering the default analysis window (START_TIME/END_TIME) keep the
+    plain, un-suffixed name so callers can always find them without knowing
+    the window. A custom window is encoded into the filename so it doesn't
+    collide with the default output.
+    """
+    label = "tick" if freq == "Tick" else freq
+    start_time = START_TIME if start_time is None else pd.Timestamp(start_time)
+    end_time = END_TIME if end_time is None else pd.Timestamp(end_time)
+
+    if start_time == START_TIME and end_time == END_TIME:
+        return f"{currency}_{label}_processed.parquet"
+
+    start_str = start_time.strftime(_FILENAME_TIME_FMT)
+    end_str = end_time.strftime(_FILENAME_TIME_FMT)
+    return f"{currency}_{label}_processed_{start_str}_{end_str}.parquet"
+
 
 def get_column_names(dataname):
     # Returns a list with the column names corresponding to the chosen dataname
@@ -214,15 +241,22 @@ def create_currency_df(currency, include_rebalance=True):
     return token_merged
 
 
-def prepare_processed_data(currency, frequencies=None):
+def prepare_processed_data(currency, frequencies=None, start_time=START_TIME, end_time=END_TIME):
     """Load raw data, resample to specified frequencies, then filter to analysis period.
 
     Args:
         currency: ticker (e.g., "btc", "sushi")
         frequencies: list of frequencies (e.g., ["15s", "30s", "1min"]).
+        start_time: start of the analysis window (UTC), used to filter data and name output files.
+        end_time: end of the analysis window (UTC), used to filter data and name output files.
     """
     output_folder = DATA_PROCESSED
     output_folder.mkdir(parents=True, exist_ok=True)
+
+    start_time = pd.Timestamp(start_time)
+    end_time = pd.Timestamp(end_time)
+    if start_time >= end_time:
+        raise ValueError(f"start_time ({start_time}) must be before end_time ({end_time})")
 
     print(f"Loading {currency.upper()} token data (tick-level, cleaned)...")
     data = create_currency_df(currency)
@@ -231,15 +265,20 @@ def prepare_processed_data(currency, frequencies=None):
     # Ensure timestamp is datetime and UTC-aware
     data["timestamp"] = pd.to_datetime(data["timestamp"], utc=True)
 
-    # Define analysis period (UTC)
-    analysis_start = pd.Timestamp("2021-05-19 12:00:00", tz="UTC")
-    analysis_end = pd.Timestamp("2021-05-19 14:00:00", tz="UTC")
+    # Verify the requested window falls within the available raw data
+    raw_start = data["timestamp"].min()
+    raw_end = data["timestamp"].max()
+    if start_time < raw_start or end_time > raw_end:
+        raise ValueError(
+            f"Requested analysis window [{start_time}, {end_time}] falls outside the available "
+            f"raw data range [{raw_start}, {raw_end}] for {currency}"
+        )
 
     # Filter tick-level data to analysis period and save
-    data_filtered = data[data["timestamp"].between(analysis_start, analysis_end)].reset_index(drop=True)
-    print(f"Filtered data shape (2-hour window): {data_filtered.shape}")
+    data_filtered = data[data["timestamp"].between(start_time, end_time)].reset_index(drop=True)
+    print(f"Filtered data shape ({end_time - start_time} window): {data_filtered.shape}")
 
-    filename_tick = output_folder / f"{currency}_tick_processed.parquet"
+    filename_tick = output_folder / processed_filename(currency, "Tick", start_time, end_time)
     data_filtered.to_parquet(filename_tick, index=False)
     print(f"Saved tick-level data ({data_filtered.shape[0]} rows) to {filename_tick}")
 
@@ -255,11 +294,11 @@ def prepare_processed_data(currency, frequencies=None):
             df_resampled = df_resampled.reset_index()
 
             # Filter resampled data to analysis period
-            df_resampled = df_resampled[df_resampled["timestamp"].between(analysis_start, analysis_end)].reset_index(
+            df_resampled = df_resampled[df_resampled["timestamp"].between(start_time, end_time)].reset_index(
                 drop=True
             )
 
-            filename = output_folder / f"{currency}_{freq}_processed.parquet"
+            filename = output_folder / processed_filename(currency, freq, start_time, end_time)
             df_resampled.to_parquet(filename, index=False)
             print(f"Saved {freq} resampled data ({df_resampled.shape[0]} rows) to {filename}")
 

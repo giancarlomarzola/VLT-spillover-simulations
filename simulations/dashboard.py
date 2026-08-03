@@ -13,7 +13,7 @@ import streamlit as st
 
 from core.orderbook import Orderbook
 from core.price_spillover_simulations import run_simulation
-from utils.data_io import FREQUENCIES
+from utils.data_io import FREQUENCIES, processed_filename
 from utils.paths import DATA_PROCESSED
 from utils.plotting import plot_orderbook_depth, plot_results, resample_data
 
@@ -675,10 +675,7 @@ else:
         with st.spinner("Running simulation..."):
             try:
                 # Load pre-processed data
-                if frequency == "Tick":
-                    filepath = DATA_PROCESSED / f"{currency}_tick_processed.parquet"
-                else:
-                    filepath = DATA_PROCESSED / f"{currency}_{frequency}_processed.parquet"
+                filepath = DATA_PROCESSED / processed_filename(currency, frequency)
 
                 binance_data = pd.read_parquet(filepath)
                 binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)

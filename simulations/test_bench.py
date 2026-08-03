@@ -3,12 +3,13 @@ import pandas as pd
 
 from core.orderbook import Orderbook
 from core.price_spillover_simulations import run_simulation
+from utils.data_io import processed_filename
 from utils.paths import DATA_PROCESSED
 from utils.plotting import plot_orderbook_depth, plot_results
 
 # Parameters
 currency = "btc"
-frequency = "30s"
+frequency = "1s"
 
 lambda_target = None  # None = boundary rebalancing, float = target rebalancing
 lambda_upper = 4  # upper boundary
@@ -16,6 +17,10 @@ lambda_lower = 1.25  # lower boundary
 
 k = 0.3
 resilience = 0.2
+
+deep, shallow = 50_000_000, 10_000_000
+narrow, wide = 1 / 100, 10 / 100
+tight, broad = 0.5 / 10_000, 5 / 10_000
 
 # Display options
 show_hover_info = True
@@ -30,12 +35,12 @@ orderbooks = [
     None,
     Orderbook(
         name="Deep Narrow Tight",
-        depth_bid=50_000_000,
-        depth_ask=50_000_000,
-        width_bid=0.01,
-        width_ask=0.01,
-        spread_bid=0.005 / 100,
-        spread_ask=0.005 / 100,
+        depth_bid=deep,
+        depth_ask=deep,
+        width_bid=narrow,
+        width_ask=narrow,
+        spread_bid=tight,
+        spread_ask=tight,
         k_bid=k,
         k_ask=k,
         resilience_ask=resilience,
@@ -43,12 +48,12 @@ orderbooks = [
     ),
     Orderbook(
         name="Deep Narrow Broad",
-        depth_bid=50_000_000,
-        depth_ask=50_000_000,
-        width_bid=0.01,
-        width_ask=0.01,
-        spread_bid=0.05 / 100,
-        spread_ask=0.05 / 100,
+        depth_bid=deep,
+        depth_ask=deep,
+        width_bid=narrow,
+        width_ask=narrow,
+        spread_bid=broad,
+        spread_ask=broad,
         k_bid=k,
         k_ask=k,
         resilience_ask=resilience,
@@ -56,12 +61,12 @@ orderbooks = [
     ),
     Orderbook(
         name="Deep Wide Tight",
-        depth_bid=50_000_000,
-        depth_ask=50_000_000,
-        width_bid=0.1,
-        width_ask=0.1,
-        spread_bid=0.005 / 100,
-        spread_ask=0.005 / 100,
+        depth_bid=deep,
+        depth_ask=deep,
+        width_bid=wide,
+        width_ask=wide,
+        spread_bid=tight,
+        spread_ask=tight,
         k_bid=k,
         k_ask=k,
         resilience_ask=resilience,
@@ -69,12 +74,12 @@ orderbooks = [
     ),
     Orderbook(
         name="Shallow Narrow Tight",
-        depth_bid=5_000_000,
-        depth_ask=5_000_000,
-        width_bid=0.01,
-        width_ask=0.01,
-        spread_bid=0.005 / 100,
-        spread_ask=0.005 / 100,
+        depth_bid=shallow,
+        depth_ask=shallow,
+        width_bid=narrow,
+        width_ask=narrow,
+        spread_bid=tight,
+        spread_ask=tight,
         k_bid=k,
         k_ask=k,
         resilience_ask=resilience,
@@ -83,11 +88,11 @@ orderbooks = [
     Orderbook(
         name="Asymmetrical Depth",
         depth_bid=30_000_000,
-        depth_ask=50_000_000,
-        width_bid=0.01,
-        width_ask=0.01,
-        spread_bid=0.005 / 100,
-        spread_ask=0.005 / 100,
+        depth_ask=deep,
+        width_bid=narrow,
+        width_ask=narrow,
+        spread_bid=tight,
+        spread_ask=tight,
         k_bid=k,
         k_ask=k,
         resilience_ask=resilience,
@@ -99,7 +104,7 @@ orderbooks = [
 # Load pre-processed data
 try:
     print(f"Loading {currency.upper()} at {frequency} frequency...")
-    binance_data = pd.read_parquet(DATA_PROCESSED / f"{currency}_{frequency}_processed.parquet")
+    binance_data = pd.read_parquet(DATA_PROCESSED / processed_filename(currency, frequency))
     binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)
     print(f"Loaded {len(binance_data)} rows")
 except FileNotFoundError:
