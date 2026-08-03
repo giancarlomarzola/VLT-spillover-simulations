@@ -58,6 +58,7 @@ orderbooks = [
     ),
 ]
 
+
 # Random price series - to be substituted later
 def generate_price_series(
     start_price=100, start_time=None, end_time=None, freq="1min", volatility=0.01

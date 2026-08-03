@@ -89,10 +89,13 @@ def plot_results(
             )
 
     # Resample data if requested
-    if resample_freq and resample_freq != "raw" and x_axis is not None and len(x_axis) > 0:
-        temp_df = pd.DataFrame(
-            {"timestamp": x_axis, "market_price": market_price}
-        )
+    if (
+        resample_freq
+        and resample_freq != "raw"
+        and x_axis is not None
+        and len(x_axis) > 0
+    ):
+        temp_df = pd.DataFrame({"timestamp": x_axis, "market_price": market_price})
         temp_df["timestamp"] = pd.to_datetime(temp_df["timestamp"], utc=True)
         temp_df.set_index("timestamp", inplace=True)
         resampled = temp_df.resample(resample_freq).last()
@@ -248,7 +251,7 @@ def plot_results(
     )
     if has_rebalance_data:
         layout_dict["yaxis2"] = {
-            "title": "Rebalance Size (USD)",
+            "title": "Rebalance Size (USDT)",
             "overlaying": "y",
             "side": "right",
             "rangemode": "tozero",
@@ -454,7 +457,12 @@ def plot_orderbook_depth(
             x_axis = result_timestamps
 
     # Resample data if requested
-    if resample_freq and resample_freq != "raw" and x_axis is not None and len(x_axis) > 0:
+    if (
+        resample_freq
+        and resample_freq != "raw"
+        and x_axis is not None
+        and len(x_axis) > 0
+    ):
         resampled_results_dict = {}
         for name, df in results_dict.items():
             df_temp = df.copy()

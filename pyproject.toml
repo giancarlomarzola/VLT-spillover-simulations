@@ -13,5 +13,12 @@ dependencies = [
     "openpyxl>=3.1.5",
     "pandas>=3.0.3",
     "plotly>=6.9.0",
+    "ruff>=0.16.1",
     "streamlit>=1.60.0",
 ]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

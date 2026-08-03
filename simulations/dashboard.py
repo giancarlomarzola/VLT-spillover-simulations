@@ -32,32 +32,50 @@ def frequency_to_seconds(freq):
         return float(freq[:-1])
     if freq.endswith("min"):
         return float(freq[:-3]) * 60
-    return float('inf')
+    return float("inf")
+
 
 # Persistence setup
 CONFIG_DIR = Path(__file__).parent.parent / ".dashboard_config"
 CONFIG_FILE = CONFIG_DIR / "dashboard_state.json"
 DEFAULTS_FILE = CONFIG_DIR / "dashboard_defaults.json"
 
+
 def load_config():
     if CONFIG_FILE.exists():
         try:
-            with open(CONFIG_FILE, 'r') as f:
+            with open(CONFIG_FILE, "r") as f:
                 return json.load(f)
         except (OSError, json.JSONDecodeError):
             return None
     return None
+
 
 def load_defaults():
     if DEFAULTS_FILE.exists():
         try:
-            with open(DEFAULTS_FILE, 'r') as f:
+            with open(DEFAULTS_FILE, "r") as f:
                 return json.load(f)
         except (OSError, json.JSONDecodeError):
             return None
     return None
 
-def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, k_curvature, resilience):
+
+def save_config(
+    orderbooks,
+    currency,
+    frequency,
+    lambda_target,
+    lambda_value,
+    lambda_upper,
+    lambda_lower,
+    show_hover,
+    show_markers,
+    leverage_timing,
+    include_baseline,
+    k_curvature,
+    resilience,
+):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     config = {
         "orderbooks": orderbooks,
@@ -74,10 +92,25 @@ def save_config(orderbooks, currency, frequency, lambda_target, lambda_value, la
         "k_curvature": k_curvature,
         "resilience": resilience,
     }
-    with open(CONFIG_FILE, 'w') as f:
+    with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=2)
 
-def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, k_curvature, resilience):
+
+def save_as_defaults(
+    orderbooks,
+    currency,
+    frequency,
+    lambda_target,
+    lambda_value,
+    lambda_upper,
+    lambda_lower,
+    show_hover,
+    show_markers,
+    leverage_timing,
+    include_baseline,
+    k_curvature,
+    resilience,
+):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     defaults = {
         "orderbooks": orderbooks,
@@ -94,8 +127,9 @@ def save_as_defaults(orderbooks, currency, frequency, lambda_target, lambda_valu
         "k_curvature": k_curvature,
         "resilience": resilience,
     }
-    with open(DEFAULTS_FILE, 'w') as f:
+    with open(DEFAULTS_FILE, "w") as f:
         json.dump(defaults, f, indent=2)
+
 
 st.set_page_config(layout="wide", page_title="Test Bench Dashboard")
 
@@ -109,15 +143,27 @@ if "custom_orderbooks" not in st.session_state:
 if "plot_resample_freq" not in st.session_state:
     st.session_state.plot_resample_freq = "15s"
 if "currency" not in st.session_state:
-    st.session_state.currency = saved_config.get("currency") if saved_config else (saved_defaults.get("currency") if saved_defaults else "btc")
+    st.session_state.currency = (
+        saved_config.get("currency")
+        if saved_config
+        else (saved_defaults.get("currency") if saved_defaults else "btc")
+    )
 if "frequency" not in st.session_state:
-    st.session_state.frequency = saved_config.get("frequency") if saved_config else (saved_defaults.get("frequency") if saved_defaults else "30s")
+    st.session_state.frequency = (
+        saved_config.get("frequency")
+        if saved_config
+        else (saved_defaults.get("frequency") if saved_defaults else "30s")
+    )
 if "show_hover" not in st.session_state:
-    st.session_state.show_hover = (saved_config.get("show_hover") if saved_config else None) or (saved_defaults.get("show_hover") if saved_defaults else False)
+    st.session_state.show_hover = (
+        saved_config.get("show_hover") if saved_config else None
+    ) or (saved_defaults.get("show_hover") if saved_defaults else False)
+
 
 def reset_plot_resample():
     """Reset plot resample frequency when settings change."""
     st.session_state.plot_resample_freq = "15s"
+
 
 # Sidebar configuration
 with st.sidebar:
@@ -126,22 +172,30 @@ with st.sidebar:
     # Currency and Frequency selection
     st.subheader("Simulation Parameters")
     available_currencies = ["btc", "sushi", "eth"]
-    default_currency_index = available_currencies.index(st.session_state.currency) if st.session_state.currency in available_currencies else 0
+    default_currency_index = (
+        available_currencies.index(st.session_state.currency)
+        if st.session_state.currency in available_currencies
+        else 0
+    )
     currency = st.radio(
         "Currency",
         available_currencies,
         horizontal=True,
         index=default_currency_index,
-        on_change=reset_plot_resample
+        on_change=reset_plot_resample,
     )
     st.session_state.currency = currency
 
-    default_freq_index = FREQUENCIES.index(st.session_state.frequency) if st.session_state.frequency in FREQUENCIES else FREQUENCIES.index("30s")
+    default_freq_index = (
+        FREQUENCIES.index(st.session_state.frequency)
+        if st.session_state.frequency in FREQUENCIES
+        else FREQUENCIES.index("30s")
+    )
     frequency = st.selectbox(
         "Simulation Frequency",
         FREQUENCIES,
         index=default_freq_index,
-        on_change=reset_plot_resample
+        on_change=reset_plot_resample,
     )
     st.session_state.frequency = frequency
 
@@ -153,12 +207,20 @@ with st.sidebar:
     # Build resample options: raw or frequencies strictly greater than simulation frequency
     all_resample_options = ["raw"] + FREQUENCIES + ["5min", "15min"]
     sim_freq_seconds = frequency_to_seconds(frequency)
-    resample_options = ["raw"] + [f for f in all_resample_options[1:] if frequency_to_seconds(f) > sim_freq_seconds]
-    resample_options = list(dict.fromkeys(resample_options))  # Remove duplicates while preserving order
+    resample_options = ["raw"] + [
+        f
+        for f in all_resample_options[1:]
+        if frequency_to_seconds(f) > sim_freq_seconds
+    ]
+    resample_options = list(
+        dict.fromkeys(resample_options)
+    )  # Remove duplicates while preserving order
 
     # Use session state value if it's in the available options, otherwise default to "raw"
     if st.session_state.plot_resample_freq in resample_options:
-        default_resample_index = resample_options.index(st.session_state.plot_resample_freq)
+        default_resample_index = resample_options.index(
+            st.session_state.plot_resample_freq
+        )
     else:
         default_resample_index = 0  # Default to "raw"
 
@@ -166,27 +228,41 @@ with st.sidebar:
         "Resample for plot clarity",
         resample_options,
         index=default_resample_index,
-        help="Use 'raw' to show all data points. Only shows resample frequencies coarser than simulation frequency."
+        help="Use 'raw' to show all data points. Only shows resample frequencies coarser than simulation frequency.",
     )
     st.session_state.plot_resample_freq = plot_resample_freq
 
-    default_show_markers = (saved_config.get("show_markers") if saved_config else None) or (saved_defaults.get("show_markers") if saved_defaults else True)
+    default_show_markers = (
+        saved_config.get("show_markers") if saved_config else None
+    ) or (saved_defaults.get("show_markers") if saved_defaults else True)
     show_markers = st.checkbox("Show markers on lines", value=default_show_markers)
 
-    default_leverage_timing = (saved_config.get("leverage_timing") if saved_config else None) or (saved_defaults.get("leverage_timing") if saved_defaults else "After Rebalance")
+    default_leverage_timing = (
+        saved_config.get("leverage_timing") if saved_config else None
+    ) or (
+        saved_defaults.get("leverage_timing") if saved_defaults else "After Rebalance"
+    )
     leverage_timing = st.selectbox(
         "Leverage plot",
         ["Before Rebalance", "After Rebalance"],
         index=1 if default_leverage_timing == "After Rebalance" else 0,
-        help="Show leverage (λ) before or after the rebalance trade is applied."
+        help="Show leverage (λ) before or after the rebalance trade is applied.",
     )
 
     # Rebalancing parameters
     st.subheader("Rebalancing Strategy")
-    default_lambda_target = (saved_config.get("lambda_target") if saved_config else None) or (saved_defaults.get("lambda_target") if saved_defaults else False)
-    default_lambda_value = (saved_config.get("lambda_value") if saved_config else None) or (saved_defaults.get("lambda_value") if saved_defaults else 1.5)
-    default_lambda_upper = (saved_config.get("lambda_upper") if saved_config else None) or (saved_defaults.get("lambda_upper") if saved_defaults else 4.0)
-    default_lambda_lower = (saved_config.get("lambda_lower") if saved_config else None) or (saved_defaults.get("lambda_lower") if saved_defaults else 1.25)
+    default_lambda_target = (
+        saved_config.get("lambda_target") if saved_config else None
+    ) or (saved_defaults.get("lambda_target") if saved_defaults else False)
+    default_lambda_value = (
+        saved_config.get("lambda_value") if saved_config else None
+    ) or (saved_defaults.get("lambda_value") if saved_defaults else 1.5)
+    default_lambda_upper = (
+        saved_config.get("lambda_upper") if saved_config else None
+    ) or (saved_defaults.get("lambda_upper") if saved_defaults else 4.0)
+    default_lambda_lower = (
+        saved_config.get("lambda_lower") if saved_config else None
+    ) or (saved_defaults.get("lambda_lower") if saved_defaults else 1.25)
 
     # Strategy toggle
     rebalancing_mode = st.radio(
@@ -195,17 +271,14 @@ with st.sidebar:
         index=1 if default_lambda_target else 0,
         horizontal=True,
         label_visibility="collapsed",
-        on_change=reset_plot_resample
+        on_change=reset_plot_resample,
     )
     lambda_target = rebalancing_mode == "Target Leverage"
 
     # Target value field (only show if Target mode)
     if lambda_target:
         lambda_value = st.number_input(
-            "Lambda target value",
-            value=default_lambda_value,
-            min_value=0.0,
-            step=0.1
+            "Lambda target value", value=default_lambda_value, min_value=0.0, step=0.1
         )
     else:
         lambda_value = None
@@ -220,7 +293,7 @@ with st.sidebar:
             value=default_lambda_lower,
             min_value=0.1,
             max_value=10.0,
-            step=0.01
+            step=0.01,
         )
     with bound_col2:
         lambda_upper = st.number_input(
@@ -228,35 +301,45 @@ with st.sidebar:
             value=default_lambda_upper,
             min_value=0.1,
             max_value=10.0,
-            step=0.01
+            step=0.01,
         )
 
     # Orderbook selection
     st.subheader("Orderbook Selection")
 
     # Global k curvature and resilience sliders
-    default_k = (saved_config.get("k_curvature") if saved_config else None) or (saved_defaults.get("k_curvature") if saved_defaults else 1.0)
+    default_k = (saved_config.get("k_curvature") if saved_config else None) or (
+        saved_defaults.get("k_curvature") if saved_defaults else 1.0
+    )
     k_curvature = st.slider(
         "k Curvature (applies to all orderbooks)",
         min_value=0.0,
         max_value=10.0,
         value=default_k,
         step=0.1,
-        help="k=1: linear slippage. Lower k: more convex (less slippage near zero). Higher k: more concave."
+        help="k=1: linear slippage. Lower k: more convex (less slippage near zero). Higher k: more concave.",
     )
 
-    default_resilience = (saved_config.get("resilience") if saved_config else None) or (saved_defaults.get("resilience") if saved_defaults else 1.0)
+    default_resilience = (saved_config.get("resilience") if saved_config else None) or (
+        saved_defaults.get("resilience") if saved_defaults else 1.0
+    )
     resilience = st.slider(
         "Resilience (applies to all orderbooks)",
         min_value=0.0,
         max_value=1.0,
         value=default_resilience,
         step=0.01,
-        help="0: no resilience (orderbook doesn't recover). 1: perfect resilience."
+        help="0: no resilience (orderbook doesn't recover). 1: perfect resilience.",
     )
 
-    default_include_baseline = (saved_config.get("include_baseline") if saved_config else None) or (saved_defaults.get("include_baseline") if saved_defaults else True)
-    include_baseline = st.checkbox("Include baseline (no orderbook)", value=default_include_baseline, on_change=reset_plot_resample)
+    default_include_baseline = (
+        saved_config.get("include_baseline") if saved_config else None
+    ) or (saved_defaults.get("include_baseline") if saved_defaults else True)
+    include_baseline = st.checkbox(
+        "Include baseline (no orderbook)",
+        value=default_include_baseline,
+        on_change=reset_plot_resample,
+    )
 
     # Initialize orderbooks list if not exists
     if "orderbooks_list" not in st.session_state:
@@ -266,10 +349,54 @@ with st.sidebar:
             st.session_state.orderbooks_list = saved_defaults["orderbooks"]
         else:
             st.session_state.orderbooks_list = [
-                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Tight", "depth_bid": 50_000_000, "depth_ask": 50_000_000, "width_bid": 100, "width_ask": 100, "spread_bid": 50, "spread_ask": 50, "k_bid": 1, "k_ask": 1},
-                {"_id": str(uuid.uuid4()), "name": "Deep Narrow Broad", "depth_bid": 50_000_000, "depth_ask": 50_000_000, "width_bid": 100, "width_ask": 100, "spread_bid": 500, "spread_ask": 500, "k_bid": 1, "k_ask": 1},
-                {"_id": str(uuid.uuid4()), "name": "Deep Wide Tight", "depth_bid": 50_000_000, "depth_ask": 50_000_000, "width_bid": 1000, "width_ask": 1000, "spread_bid": 50, "spread_ask": 50, "k_bid": 1, "k_ask": 1},
-                {"_id": str(uuid.uuid4()), "name": "Shallow Narrow Tight", "depth_bid": 5_000_000, "depth_ask": 5_000_000, "width_bid": 100, "width_ask": 100, "spread_bid": 50, "spread_ask": 50, "k_bid": 1, "k_ask": 1},
+                {
+                    "_id": str(uuid.uuid4()),
+                    "name": "Deep Narrow Tight",
+                    "depth_bid": 50_000_000,
+                    "depth_ask": 50_000_000,
+                    "width_bid": 100,
+                    "width_ask": 100,
+                    "spread_bid": 50,
+                    "spread_ask": 50,
+                    "k_bid": 1,
+                    "k_ask": 1,
+                },
+                {
+                    "_id": str(uuid.uuid4()),
+                    "name": "Deep Narrow Broad",
+                    "depth_bid": 50_000_000,
+                    "depth_ask": 50_000_000,
+                    "width_bid": 100,
+                    "width_ask": 100,
+                    "spread_bid": 500,
+                    "spread_ask": 500,
+                    "k_bid": 1,
+                    "k_ask": 1,
+                },
+                {
+                    "_id": str(uuid.uuid4()),
+                    "name": "Deep Wide Tight",
+                    "depth_bid": 50_000_000,
+                    "depth_ask": 50_000_000,
+                    "width_bid": 1000,
+                    "width_ask": 1000,
+                    "spread_bid": 50,
+                    "spread_ask": 50,
+                    "k_bid": 1,
+                    "k_ask": 1,
+                },
+                {
+                    "_id": str(uuid.uuid4()),
+                    "name": "Shallow Narrow Tight",
+                    "depth_bid": 5_000_000,
+                    "depth_ask": 5_000_000,
+                    "width_bid": 100,
+                    "width_ask": 100,
+                    "spread_bid": 50,
+                    "spread_ask": 50,
+                    "k_bid": 1,
+                    "k_ask": 1,
+                },
             ]
 
     # Display orderbook rows
@@ -288,32 +415,44 @@ with st.sidebar:
                 value=orderbook["name"],
                 key=f"name_{ob_id}",
                 label_visibility="collapsed",
-                placeholder="Orderbook name"
+                placeholder="Orderbook name",
             )
         with col2:
             if idx > 0 and st.button("↑", key=f"up_{ob_id}", help="Move up"):
-                st.session_state.orderbooks_list[idx], st.session_state.orderbooks_list[idx - 1] = (
+                (
+                    st.session_state.orderbooks_list[idx],
                     st.session_state.orderbooks_list[idx - 1],
-                    st.session_state.orderbooks_list[idx]
+                ) = (
+                    st.session_state.orderbooks_list[idx - 1],
+                    st.session_state.orderbooks_list[idx],
                 )
                 st.rerun()
         with col3:
-            if idx < len(st.session_state.orderbooks_list) - 1 and st.button("↓", key=f"down_{ob_id}", help="Move down"):
-                st.session_state.orderbooks_list[idx], st.session_state.orderbooks_list[idx + 1] = (
+            if idx < len(st.session_state.orderbooks_list) - 1 and st.button(
+                "↓", key=f"down_{ob_id}", help="Move down"
+            ):
+                (
+                    st.session_state.orderbooks_list[idx],
                     st.session_state.orderbooks_list[idx + 1],
-                    st.session_state.orderbooks_list[idx]
+                ) = (
+                    st.session_state.orderbooks_list[idx + 1],
+                    st.session_state.orderbooks_list[idx],
                 )
                 st.rerun()
         with col4:
             if st.button("🗑️", key=f"delete_{ob_id}", help="Delete this orderbook"):
-                st.session_state.orderbooks_list = [ob for ob in st.session_state.orderbooks_list if ob.get("_id") != ob_id]
+                st.session_state.orderbooks_list = [
+                    ob
+                    for ob in st.session_state.orderbooks_list
+                    if ob.get("_id") != ob_id
+                ]
                 st.rerun()
 
         # Asymmetrical checkbox row (below name, left-aligned)
         is_asymmetrical = st.checkbox(
             "Asymmetrical Orderbook",
             value=orderbook.get("asymmetrical", False),
-            key=f"asymmetrical_{ob_id}"
+            key=f"asymmetrical_{ob_id}",
         )
         orderbook["asymmetrical"] = is_asymmetrical
 
@@ -330,7 +469,7 @@ with st.sidebar:
                     min_value=0.0,
                     step=1.0,
                     key=f"depth_{ob_id}",
-                    label_visibility="collapsed"
+                    label_visibility="collapsed",
                 )
                 orderbook["depth_bid"] = int(depth_input * 1_000_000)
                 orderbook["depth_ask"] = int(depth_input * 1_000_000)
@@ -343,7 +482,7 @@ with st.sidebar:
                     value=width_val,
                     step=0.1,
                     key=f"width_{ob_id}",
-                    label_visibility="collapsed"
+                    label_visibility="collapsed",
                 )
                 orderbook["width_bid"] = width_input
                 orderbook["width_ask"] = width_input
@@ -356,7 +495,7 @@ with st.sidebar:
                     value=spread_val,
                     step=0.1,
                     key=f"spread_{ob_id}",
-                    label_visibility="collapsed"
+                    label_visibility="collapsed",
                 )
                 orderbook["spread_bid"] = spread_input
                 orderbook["spread_ask"] = spread_input
@@ -377,7 +516,7 @@ with st.sidebar:
                         min_value=0.0,
                         step=1.0,
                         key=f"depth_bid_asym_{ob_id}",
-                        label_visibility="collapsed"
+                        label_visibility="collapsed",
                     )
                     orderbook["depth_bid"] = int(depth_bid_input * 1_000_000)
                 with depth_ask_col:
@@ -388,7 +527,7 @@ with st.sidebar:
                         min_value=0.0,
                         step=1.0,
                         key=f"depth_ask_asym_{ob_id}",
-                        label_visibility="collapsed"
+                        label_visibility="collapsed",
                     )
                     orderbook["depth_ask"] = int(depth_ask_input * 1_000_000)
                 st.caption("bid     |     ask")
@@ -403,7 +542,7 @@ with st.sidebar:
                         value=width_bid_val,
                         step=0.1,
                         key=f"width_bid_asym_{ob_id}",
-                        label_visibility="collapsed"
+                        label_visibility="collapsed",
                     )
                     orderbook["width_bid"] = width_bid_input
                 with width_ask_col:
@@ -413,7 +552,7 @@ with st.sidebar:
                         value=width_ask_val,
                         step=0.1,
                         key=f"width_ask_asym_{ob_id}",
-                        label_visibility="collapsed"
+                        label_visibility="collapsed",
                     )
                     orderbook["width_ask"] = width_ask_input
                 st.caption("bid     |     ask")
@@ -428,7 +567,7 @@ with st.sidebar:
                         value=spread_bid_val,
                         step=0.1,
                         key=f"spread_bid_asym_{ob_id}",
-                        label_visibility="collapsed"
+                        label_visibility="collapsed",
                     )
                     orderbook["spread_bid"] = spread_bid_input
                 with spread_ask_col:
@@ -438,7 +577,7 @@ with st.sidebar:
                         value=spread_ask_val,
                         step=0.1,
                         key=f"spread_ask_asym_{ob_id}",
-                        label_visibility="collapsed"
+                        label_visibility="collapsed",
                     )
                     orderbook["spread_ask"] = spread_ask_input
                 st.caption("bid     |     ask")
@@ -446,31 +585,49 @@ with st.sidebar:
         st.divider()
 
     # Add row button
-    if len(st.session_state.orderbooks_list) < 8 and st.button("+ Add Orderbook", type="primary"):
-        st.session_state.orderbooks_list.append({
-            "_id": str(uuid.uuid4()),
-            "name": f"Orderbook {len(st.session_state.orderbooks_list) + 1}",
-            "depth_bid": 50_000_000,
-            "depth_ask": 50_000_000,
-            "width_bid": 100,
-            "width_ask": 100,
-            "spread_bid": 50,
-            "spread_ask": 50,
-            "k_bid": 1,
-            "k_ask": 1,
-        })
+    if len(st.session_state.orderbooks_list) < 8 and st.button(
+        "+ Add Orderbook", type="primary"
+    ):
+        st.session_state.orderbooks_list.append(
+            {
+                "_id": str(uuid.uuid4()),
+                "name": f"Orderbook {len(st.session_state.orderbooks_list) + 1}",
+                "depth_bid": 50_000_000,
+                "depth_ask": 50_000_000,
+                "width_bid": 100,
+                "width_ask": 100,
+                "spread_bid": 50,
+                "spread_ask": 50,
+                "k_bid": 1,
+                "k_ask": 1,
+            }
+        )
         st.rerun()
 
     # Settings management buttons
     st.divider()
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("💾 Save as Default", width='stretch'):
-            save_as_defaults(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, k_curvature, resilience)
+        if st.button("💾 Save as Default", width="stretch"):
+            save_as_defaults(
+                st.session_state.orderbooks_list,
+                currency,
+                frequency,
+                lambda_target,
+                lambda_value,
+                lambda_upper,
+                lambda_lower,
+                show_hover,
+                show_markers,
+                leverage_timing,
+                include_baseline,
+                k_curvature,
+                resilience,
+            )
             st.success("Settings saved as default!")
 
     with col2:
-        if st.button("🔄 Reset to Default", width='stretch'):
+        if st.button("🔄 Reset to Default", width="stretch"):
             if saved_defaults:
                 CONFIG_FILE.unlink(missing_ok=True)
                 st.session_state.clear()
@@ -510,7 +667,21 @@ with st.sidebar:
             selected_orderbooks[ob.name] = ob
 
     # Save configuration
-    save_config(st.session_state.orderbooks_list, currency, frequency, lambda_target, lambda_value, lambda_upper, lambda_lower, show_hover, show_markers, leverage_timing, include_baseline, k_curvature, resilience)
+    save_config(
+        st.session_state.orderbooks_list,
+        currency,
+        frequency,
+        lambda_target,
+        lambda_value,
+        lambda_upper,
+        lambda_lower,
+        show_hover,
+        show_markers,
+        leverage_timing,
+        include_baseline,
+        k_curvature,
+        resilience,
+    )
 
 # Main content
 if not selected_orderbooks:
@@ -523,133 +694,160 @@ else:
 
     # Run simulation button
     if st.button("Run Simulation", type="primary"):
-            with st.spinner("Running simulation..."):
-                try:
-                    # Load pre-processed data
-                    if frequency == "Tick":
-                        filepath = DATA_PROCESSED / f"{currency}_tick_processed.parquet"
-                    else:
-                        filepath = DATA_PROCESSED / f"{currency}_{frequency}_processed.parquet"
+        with st.spinner("Running simulation..."):
+            try:
+                # Load pre-processed data
+                if frequency == "Tick":
+                    filepath = DATA_PROCESSED / f"{currency}_tick_processed.parquet"
+                else:
+                    filepath = (
+                        DATA_PROCESSED / f"{currency}_{frequency}_processed.parquet"
+                    )
 
-                    binance_data = pd.read_parquet(filepath)
-                    binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)
+                binance_data = pd.read_parquet(filepath)
+                binance_data["timestamp"] = pd.to_datetime(
+                    binance_data["timestamp"], utc=True
+                )
 
-                    results = {}
+                results = {}
 
-                    # Run simulations
-                    st.info("Orderbook Parameters:")
-                    for orderbook_name, orderbook in selected_orderbooks.items():
-                        if orderbook is not None:
-                            st.write(f"**{orderbook_name}** → Depth: ({orderbook.depth_bid:,}, {orderbook.depth_ask:,}), Width: ({orderbook.width_bid}, {orderbook.width_ask}), Spread: ({orderbook.spread_bid}, {orderbook.spread_ask})")
-
-                        result = run_simulation(
-                            lambda_target=lambda_value,
-                            lambda_upper=lambda_upper,
-                            lambda_lower=lambda_lower,
-                            orderbook=orderbook,
-                            prepared_data=binance_data,
-                            timestamps=binance_data["timestamp"].values
+                # Run simulations
+                st.info("Orderbook Parameters:")
+                for orderbook_name, orderbook in selected_orderbooks.items():
+                    if orderbook is not None:
+                        st.write(
+                            f"**{orderbook_name}** → Depth: ({orderbook.depth_bid:,}, {orderbook.depth_ask:,}), Width: ({orderbook.width_bid}, {orderbook.width_ask}), Spread: ({orderbook.spread_bid}, {orderbook.spread_ask})"
                         )
-                        results[orderbook_name] = result
 
-                    # Resample data for plotting if requested
-                    plot_data = binance_data.copy()
-                    resampled_results = {}
-                    rebalance_magnitudes = {}
-
-                    if plot_resample_freq != "raw":
-                        # Resample binance_data (market price and timestamp)
-                        plot_data = resample_data(plot_data, plot_resample_freq)
-
-                        # For each result, add timestamp and resample, keeping only price_multiplier
-                        for name, result in results.items():
-                            result_with_ts = result.copy()
-                            result_with_ts['timestamp'] = binance_data['timestamp'].values
-                            resampled = resample_data(result_with_ts, plot_resample_freq)
-                            # Keep only the columns we need
-                            cols_to_keep = ['timestamp', 'price_multiplier', 'lambdast_up', 'lambdast_down', 'lambda_up', 'lambda_down']
-                            if 'depth_bid' in resampled.columns:
-                                cols_to_keep.append('depth_bid')
-                            if 'depth_ask' in resampled.columns:
-                                cols_to_keep.append('depth_ask')
-                            resampled_results[name] = resampled[cols_to_keep].reset_index(drop=True)
-
-                            # Combined rebalance size = |UP delta| + |DOWN delta|. actual_total_delta is
-                            # the *signed* sum of both sides, which largely cancels since UP and DOWN
-                            # rebalance in opposite directions on the same move — using it produced
-                            # near-zero, sign-flipping spikes. Summing the absolute values per side gives
-                            # the actual combined trade size, always >= 0.
-                            result_with_ts['rebalance_magnitude'] = (
-                                result_with_ts['actual_delta_up'].abs() + result_with_ts['actual_delta_down'].abs()
-                            )
-                            magnitude_by_bucket = (
-                                result_with_ts[['timestamp', 'rebalance_magnitude']]
-                                .set_index('timestamp')
-                                .resample(plot_resample_freq)
-                                .sum()
-                                .reset_index()
-                            )
-                            rebalance_magnitudes[name] = magnitude_by_bucket['rebalance_magnitude'].values
-                    else:
-                        # For raw data, just extract price_multiplier from each result
-                        for name, result in results.items():
-                            cols_to_keep = ['price_multiplier', 'lambdast_up', 'lambdast_down', 'lambda_up', 'lambda_down']
-                            if 'depth_bid' in result.columns:
-                                cols_to_keep.append('depth_bid')
-                            if 'depth_ask' in result.columns:
-                                cols_to_keep.append('depth_ask')
-                            result_copy = result[cols_to_keep].reset_index(drop=True)
-                            result_copy['timestamp'] = binance_data['timestamp'].values
-                            resampled_results[name] = result_copy
-                            rebalance_magnitudes[name] = (
-                                result['actual_delta_up'].abs() + result['actual_delta_down'].abs()
-                            ).values
-
-                    # Plot simulations using shared plotting utility
-                    title_freq = frequency.replace('min', 'min ')
-                    title_prefix = f'{currency.upper()} {title_freq}'
-
-                    # Prepare data for plotting: convert price_multiplier to simulated_price
-                    plot_results_dict = {}
-                    for name, result in resampled_results.items():
-                        plot_result = result.copy()
-                        plot_result['simulated_price'] = plot_data['price'].values * result['price_multiplier'].values
-                        plot_results_dict[name] = plot_result
-
-                    price_fig, leverage_fig = plot_results(
-                        plot_results_dict,
-                        market_price=plot_data['price'].values,
-                        x_axis=plot_data['timestamp'].values,
+                    result = run_simulation(
+                        lambda_target=lambda_value,
                         lambda_upper=lambda_upper,
                         lambda_lower=lambda_lower,
-                        show_hover=show_hover,
-                        show_markers=show_markers,
-                        leverage_timing=leverage_timing,
-                        title_prefix=title_prefix,
-                        rebalance_magnitudes=rebalance_magnitudes,
-                        currency=currency.upper()
+                        orderbook=orderbook,
+                        prepared_data=binance_data,
+                        timestamps=binance_data["timestamp"].values,
                     )
+                    results[orderbook_name] = result
 
-                    # Display results in placeholder at top
-                    plot_placeholder.plotly_chart(price_fig, width='stretch')
-                    leverage_placeholder.plotly_chart(leverage_fig, width='stretch')
+                # Resample data for plotting if requested
+                plot_data = binance_data.copy()
+                resampled_results = {}
+                rebalance_magnitudes = {}
 
-                    # Display orderbook depth plot
-                    depth_fig = plot_orderbook_depth(
-                        resampled_results,
-                        x_axis=plot_data['timestamp'].values,
-                        show_hover=show_hover,
-                        title_prefix=title_prefix
+                if plot_resample_freq != "raw":
+                    # Resample binance_data (market price and timestamp)
+                    plot_data = resample_data(plot_data, plot_resample_freq)
+
+                    # For each result, add timestamp and resample, keeping only price_multiplier
+                    for name, result in results.items():
+                        result_with_ts = result.copy()
+                        result_with_ts["timestamp"] = binance_data["timestamp"].values
+                        resampled = resample_data(result_with_ts, plot_resample_freq)
+                        # Keep only the columns we need
+                        cols_to_keep = [
+                            "timestamp",
+                            "price_multiplier",
+                            "lambdast_up",
+                            "lambdast_down",
+                            "lambda_up",
+                            "lambda_down",
+                        ]
+                        if "depth_bid" in resampled.columns:
+                            cols_to_keep.append("depth_bid")
+                        if "depth_ask" in resampled.columns:
+                            cols_to_keep.append("depth_ask")
+                        resampled_results[name] = resampled[cols_to_keep].reset_index(
+                            drop=True
+                        )
+
+                        # Combined rebalance size = |UP delta| + |DOWN delta|. actual_total_delta is
+                        # the *signed* sum of both sides, which largely cancels since UP and DOWN
+                        # rebalance in opposite directions on the same move — using it produced
+                        # near-zero, sign-flipping spikes. Summing the absolute values per side gives
+                        # the actual combined trade size, always >= 0.
+                        result_with_ts["rebalance_magnitude"] = (
+                            result_with_ts["actual_delta_up"].abs()
+                            + result_with_ts["actual_delta_down"].abs()
+                        )
+                        magnitude_by_bucket = (
+                            result_with_ts[["timestamp", "rebalance_magnitude"]]
+                            .set_index("timestamp")
+                            .resample(plot_resample_freq)
+                            .sum()
+                            .reset_index()
+                        )
+                        rebalance_magnitudes[name] = magnitude_by_bucket[
+                            "rebalance_magnitude"
+                        ].values
+                else:
+                    # For raw data, just extract price_multiplier from each result
+                    for name, result in results.items():
+                        cols_to_keep = [
+                            "price_multiplier",
+                            "lambdast_up",
+                            "lambdast_down",
+                            "lambda_up",
+                            "lambda_down",
+                        ]
+                        if "depth_bid" in result.columns:
+                            cols_to_keep.append("depth_bid")
+                        if "depth_ask" in result.columns:
+                            cols_to_keep.append("depth_ask")
+                        result_copy = result[cols_to_keep].reset_index(drop=True)
+                        result_copy["timestamp"] = binance_data["timestamp"].values
+                        resampled_results[name] = result_copy
+                        rebalance_magnitudes[name] = (
+                            result["actual_delta_up"].abs()
+                            + result["actual_delta_down"].abs()
+                        ).values
+
+                # Plot simulations using shared plotting utility
+                title_freq = frequency.replace("min", "min ")
+                title_prefix = f"{currency.upper()} {title_freq}"
+
+                # Prepare data for plotting: convert price_multiplier to simulated_price
+                plot_results_dict = {}
+                for name, result in resampled_results.items():
+                    plot_result = result.copy()
+                    plot_result["simulated_price"] = (
+                        plot_data["price"].values * result["price_multiplier"].values
                     )
-                    depth_placeholder.plotly_chart(depth_fig, width='stretch')
+                    plot_results_dict[name] = plot_result
 
-                    st.success("Simulation completed!")
+                price_fig, leverage_fig = plot_results(
+                    plot_results_dict,
+                    market_price=plot_data["price"].values,
+                    x_axis=plot_data["timestamp"].values,
+                    lambda_upper=lambda_upper,
+                    lambda_lower=lambda_lower,
+                    show_hover=show_hover,
+                    show_markers=show_markers,
+                    leverage_timing=leverage_timing,
+                    title_prefix=title_prefix,
+                    rebalance_magnitudes=rebalance_magnitudes,
+                    currency=currency.upper(),
+                )
 
-                except FileNotFoundError:
-                    st.error(
-                        f"Pre-processed data not found for {currency.upper()} at {frequency} frequency.\n\n"
-                        f"Available frequencies: Tick, 15s, 30s, 1min\n\n"
-                        f"Please run `python utils/data_io.py` to prepare the data."
-                    )
-                except Exception as e:  # noqa: BLE001
-                    st.error(f"Error running simulation: {e!s}")
+                # Display results in placeholder at top
+                plot_placeholder.plotly_chart(price_fig, width="stretch")
+                leverage_placeholder.plotly_chart(leverage_fig, width="stretch")
+
+                # Display orderbook depth plot
+                depth_fig = plot_orderbook_depth(
+                    resampled_results,
+                    x_axis=plot_data["timestamp"].values,
+                    show_hover=show_hover,
+                    title_prefix=title_prefix,
+                )
+                depth_placeholder.plotly_chart(depth_fig, width="stretch")
+
+                st.success("Simulation completed!")
+
+            except FileNotFoundError:
+                st.error(
+                    f"Pre-processed data not found for {currency.upper()} at {frequency} frequency.\n\n"
+                    f"Available frequencies: Tick, 15s, 30s, 1min\n\n"
+                    f"Please run `python utils/data_io.py` to prepare the data."
+                )
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Error running simulation: {e!s}")

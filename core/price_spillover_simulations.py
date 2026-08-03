@@ -5,13 +5,13 @@ from core.orderbook import Orderbook
 
 # (internal_key, output_column_suffix) — order matches the original schema
 _TOKEN_VARS = [
-    ("v", "v"), # NAV
-    ("x", "x"), # Notional before rebalance
-    ("x_star", "xst"), # Notional after rebalance
-    ("lam", "lambda"), # Leverage before rebalance
-    ("lam_star", "lambdast"), # Leverage after rebalance
-    ("target_delta", "target_delta"), # Target rebalance size
-    ("actual_delta", "actual_delta"), # Actual rebalance size (if capped by orderbook)
+    ("v", "v"),  # NAV
+    ("x", "x"),  # Notional before rebalance
+    ("x_star", "xst"),  # Notional after rebalance
+    ("lam", "lambda"),  # Leverage before rebalance
+    ("lam_star", "lambdast"),  # Leverage after rebalance
+    ("target_delta", "target_delta"),  # Target rebalance size
+    ("actual_delta", "actual_delta"),  # Actual rebalance size (if capped by orderbook)
 ]
 _SIDES = (("up", 1), ("down", -1))
 
@@ -20,7 +20,16 @@ def _columns():
     cols = []
     for side, _ in _SIDES:
         cols += [f"{suffix}_{side}" for _, suffix in _TOKEN_VARS]
-    cols += ["target_total_delta", "actual_total_delta", "price_multiplier", "orderbook_effect", "raw_price", "simulated_price", "depth_bid", "depth_ask"]
+    cols += [
+        "target_total_delta",
+        "actual_total_delta",
+        "price_multiplier",
+        "orderbook_effect",
+        "raw_price",
+        "simulated_price",
+        "depth_bid",
+        "depth_ask",
+    ]
     return cols
 
 
@@ -36,8 +45,15 @@ def _step_token(prev, omega, ret, lambda_target, lambda_upper, lambda_lower):
     if v <= 0:
         # Wipeout: liquidate remaining position (eqn 14 applies here too)
         liquidation_delta = -x
-        return {"v": 0.0, "x": 0.0, "x_star": 0.0, "lam": 0.0, "lam_star": 0.0,
-                "target_delta": liquidation_delta, "actual_delta": liquidation_delta}
+        return {
+            "v": 0.0,
+            "x": 0.0,
+            "x_star": 0.0,
+            "lam": 0.0,
+            "lam_star": 0.0,
+            "target_delta": liquidation_delta,
+            "actual_delta": liquidation_delta,
+        }
 
     lam = omega * x / v
 
@@ -53,8 +69,15 @@ def _step_token(prev, omega, ret, lambda_target, lambda_upper, lambda_lower):
     target_delta = x_star - x  # target rebalance size, in $
 
     # actual_delta will be determined by execution cap in run_simulation
-    return {"v": v, "x": x, "x_star": x_star, "lam": lam, "lam_star": lam_star,
-            "target_delta": target_delta, "actual_delta": target_delta}
+    return {
+        "v": v,
+        "x": x,
+        "x_star": x_star,
+        "lam": lam,
+        "lam_star": lam_star,
+        "target_delta": target_delta,
+        "actual_delta": target_delta,
+    }
 
 
 def run_simulation(
@@ -96,8 +119,18 @@ def run_simulation(
     """
 
     if prepared_data is None:
-        if price_series is None or any(x is None for x in [start_nav_up, start_exposure_up, start_nav_down, start_exposure_down]):
-            raise ValueError("Must provide either 'prepared_data' or all of: price_series, start_nav_up, start_exposure_up, start_nav_down, start_exposure_down")
+        if price_series is None or any(
+            x is None
+            for x in [
+                start_nav_up,
+                start_exposure_up,
+                start_nav_down,
+                start_exposure_down,
+            ]
+        ):
+            raise ValueError(
+                "Must provide either 'prepared_data' or all of: price_series, start_nav_up, start_exposure_up, start_nav_down, start_exposure_down"
+            )
         price = np.asarray(price_series, dtype=float)
     else:
         price = np.asarray(prepared_data["price"].values, dtype=float)
@@ -113,7 +146,7 @@ def run_simulation(
         # Use provided initial values
         initial_values = {
             "up": (start_nav_up, start_exposure_up),
-            "down": (start_nav_down, start_exposure_down)
+            "down": (start_nav_down, start_exposure_down),
         }
 
     for side, omega in _SIDES:
@@ -121,11 +154,17 @@ def run_simulation(
             v0, x_star_0 = initial_values[side]
         else:
             if side == "up":
-                v0 = df["nTokensUP"].iloc[0] * df["up_price"].iloc[0]   # investment in basket currency
-                x_star_0 = df["BasketUP"].iloc[0] * df["price"].iloc[0]  # already signed
+                v0 = (
+                    df["nTokensUP"].iloc[0] * df["up_price"].iloc[0]
+                )  # investment in basket currency
+                x_star_0 = (
+                    df["BasketUP"].iloc[0] * df["price"].iloc[0]
+                )  # already signed
             else:
                 v0 = df["nTokensDOWN"].iloc[0] * df["down_price"].iloc[0]
-                x_star_0 = df["BasketDOWN"].iloc[0] * df["price"].iloc[0]  # already signed
+                x_star_0 = (
+                    df["BasketDOWN"].iloc[0] * df["price"].iloc[0]
+                )  # already signed
 
         # Compute initial leverage from basket
         lam_0_star = omega * x_star_0 / v0 if v0 > 0 else 0.0
@@ -171,8 +210,12 @@ def run_simulation(
         target_total = 0.0
         step_results = {}
         for side, omega in _SIDES:
-            prev = {key: out[t - 1, COL[f"{suffix}_{side}"]] for key, suffix in _TOKEN_VARS}
-            res = _step_token(prev, omega, ret, lambda_target, lambda_upper, lambda_lower)
+            prev = {
+                key: out[t - 1, COL[f"{suffix}_{side}"]] for key, suffix in _TOKEN_VARS
+            }
+            res = _step_token(
+                prev, omega, ret, lambda_target, lambda_upper, lambda_lower
+            )
             step_results[side] = res
             target_total += res["target_delta"]
 
@@ -232,7 +275,9 @@ def run_simulation(
         # Replenish orderbook depth for next iteration
         if has_orderbook:
             if timestamps is not None:
-                time_delta = (timestamps[t] - timestamps[t - 1]) / np.timedelta64(1, 's')  # Convert to seconds
+                time_delta = (timestamps[t] - timestamps[t - 1]) / np.timedelta64(
+                    1, "s"
+                )  # Convert to seconds
             else:
                 time_delta = 1.0  # Default to 1 unit of time if no timestamps provided
             orderbook.replenish(time_delta)
@@ -241,5 +286,3 @@ def run_simulation(
     if timestamps is not None:
         result_df.insert(0, "timestamp", timestamps)
     return result_df
-
-

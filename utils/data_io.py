@@ -95,9 +95,7 @@ def process_data(df, token_name):
         .sort_values("timestamp")
     )
 
-    return df.rename(
-        columns=lambda x: f"{token_name}{x}" if x != "timestamp" else x
-    )
+    return df.rename(columns=lambda x: f"{token_name}{x}" if x != "timestamp" else x)
 
 
 def add_rebalance_data(token_merged, currency):
@@ -145,8 +143,12 @@ def add_rebalance_data(token_merged, currency):
         times_utc = pd.to_datetime(up_rebalance["Time"], utc=True)
         in_window = times_utc.between(known_window_start, known_window_end).all()
         if not in_window:
-            out_of_bounds = times_utc[~times_utc.between(known_window_start, known_window_end)]
-            print("WARNING: Some SUSHIUP rebalance times are outside expected UTC window:")
+            out_of_bounds = times_utc[
+                ~times_utc.between(known_window_start, known_window_end)
+            ]
+            print(
+                "WARNING: Some SUSHIUP rebalance times are outside expected UTC window:"
+            )
             print(f"  Expected: {known_window_start} to {known_window_end}")
             print(f"  Found: {out_of_bounds.min()} to {out_of_bounds.max()}")
 
@@ -169,22 +171,36 @@ def add_rebalance_data(token_merged, currency):
 
     # Verify BasketDOWN is negative (as expected)
     if (token_merged["BasketDOWN"] > 0).any():
-        print("WARNING: BasketDOWN contains positive values; dropping the minus sign in leverage calculation")
+        print(
+            "WARNING: BasketDOWN contains positive values; dropping the minus sign in leverage calculation"
+        )
         token_merged = token_merged.assign(
-            leverageUP   = lambda d: (d.BasketUP   * d.price) / (d.nTokensUP   * d.up_price),
-            leverageDOWN = lambda d: (d.BasketDOWN * d.price) / (d.nTokensDOWN * d.down_price),
+            leverageUP=lambda d: (d.BasketUP * d.price) / (d.nTokensUP * d.up_price),
+            leverageDOWN=lambda d: (
+                (d.BasketDOWN * d.price) / (d.nTokensDOWN * d.down_price)
+            ),
         )
     else:
         # Derive mark-to-market leverage from basket (BasketDOWN is already negative)
         token_merged = token_merged.assign(
-            leverageUP   = lambda d: (d.BasketUP   * d.price) / (d.nTokensUP   * d.up_price),
-            leverageDOWN = lambda d: -(d.BasketDOWN * d.price) / (d.nTokensDOWN * d.down_price),
+            leverageUP=lambda d: (d.BasketUP * d.price) / (d.nTokensUP * d.up_price),
+            leverageDOWN=lambda d: (
+                -(d.BasketDOWN * d.price) / (d.nTokensDOWN * d.down_price)
+            ),
         )
 
     # Assert all required columns are present before returning
-    required_cols = {"nTokensUP", "nTokensDOWN", "leverageUP", "leverageDOWN", "BasketUP", "BasketDOWN"}
-    assert required_cols <= set(token_merged.columns), \
+    required_cols = {
+        "nTokensUP",
+        "nTokensDOWN",
+        "leverageUP",
+        "leverageDOWN",
+        "BasketUP",
+        "BasketDOWN",
+    }
+    assert required_cols <= set(token_merged.columns), (
         f"Missing required columns: {required_cols - set(token_merged.columns)}"
+    )
 
     return token_merged
 
@@ -240,7 +256,9 @@ def prepare_processed_data(currency, frequencies=None):
     analysis_end = pd.Timestamp("2021-05-19 14:00:00", tz="UTC")
 
     # Filter tick-level data to analysis period and save
-    data_filtered = data[data["timestamp"].between(analysis_start, analysis_end)].reset_index(drop=True)
+    data_filtered = data[
+        data["timestamp"].between(analysis_start, analysis_end)
+    ].reset_index(drop=True)
     print(f"Filtered data shape (2-hour window): {data_filtered.shape}")
 
     filename_tick = output_folder / f"{currency}_tick_processed.parquet"
@@ -253,17 +271,23 @@ def prepare_processed_data(currency, frequencies=None):
             df_resampled = data.copy()
             df_resampled = df_resampled.set_index("timestamp")
             # Resample entire dataframe to create bins, take last value in each bin
-            df_resampled = df_resampled.resample(freq, closed="right", label="right").last()
+            df_resampled = df_resampled.resample(
+                freq, closed="right", label="right"
+            ).last()
             # Forward-fill any gaps
             df_resampled = df_resampled.ffill()
             df_resampled = df_resampled.reset_index()
 
             # Filter resampled data to analysis period
-            df_resampled = df_resampled[df_resampled["timestamp"].between(analysis_start, analysis_end)].reset_index(drop=True)
+            df_resampled = df_resampled[
+                df_resampled["timestamp"].between(analysis_start, analysis_end)
+            ].reset_index(drop=True)
 
             filename = output_folder / f"{currency}_{freq}_processed.parquet"
             df_resampled.to_parquet(filename, index=False)
-            print(f"Saved {freq} resampled data ({df_resampled.shape[0]} rows) to {filename}")
+            print(
+                f"Saved {freq} resampled data ({df_resampled.shape[0]} rows) to {filename}"
+            )
 
 
 if __name__ == "__main__":
