@@ -8,10 +8,10 @@ from utils.paths import DATA_PROCESSED, DATA_RAW
 FREQUENCIES = ["Tick", "50ms", "500ms", "1s", "15s", "30s", "1min"]
 
 # Default analysis window (UTC) applied when preparing processed data
-#START_TIME = pd.Timestamp("2021-05-19 12:00:00", tz="UTC")
-#END_TIME = pd.Timestamp("2021-05-19 14:00:00", tz="UTC")
-START_TIME = pd.Timestamp("2021-05-19 04:00:00", tz="UTC")
-END_TIME = pd.Timestamp("2021-05-19 06:00:00", tz="UTC")
+START_TIME = pd.Timestamp("2021-05-19 12:00:00", tz="UTC")
+END_TIME = pd.Timestamp("2021-05-19 14:00:00", tz="UTC")
+#START_TIME = pd.Timestamp("2021-05-19 04:00:00", tz="UTC")
+#END_TIME = pd.Timestamp("2021-05-19 06:00:00", tz="UTC")
 
 # Timestamp format used to encode the analysis window in processed filenames
 _FILENAME_TIME_FMT = "%Y%m%dT%H%M%S"
