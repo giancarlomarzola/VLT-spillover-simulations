@@ -11,7 +11,10 @@ from utils.plotting import TRACE_COLORS
 currency = "btc"
 frequency = "1s"
 
-df = pd.read_parquet(DATA_PROCESSED / processed_filename(currency, frequency))
+start_time = pd.Timestamp("2021-05-19 12:00:00", tz="UTC")
+end_time = pd.Timestamp("2021-05-19 14:00:00", tz="UTC")
+
+df = pd.read_parquet(DATA_PROCESSED / processed_filename(currency, frequency, start_time, end_time))
 
 df["log_return"] = np.log(df["price"] / df["price"].shift(1))
 
@@ -110,7 +113,7 @@ ax.plot(
     label="04:00 - 06:00 price (shocked)"
     )
 
-ax.set_ylim(0, 1.2 * df["price"].max())
+#ax.set_ylim(0, 1.2 * df["price"].max())
 ax.set_title("Unshocked Price")
 ax.set_xlabel("Index")
 ax.set_ylabel("Price")
