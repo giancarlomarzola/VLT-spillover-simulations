@@ -8,27 +8,20 @@ from utils.paths import DATA_PROCESSED, DATA_RAW
 FREQUENCIES = ["Tick", "50ms", "500ms", "1s", "15s", "30s", "1min"]
 
 # Default analysis window (UTC) applied when preparing processed data
-START_TIME = pd.Timestamp("2021-05-19 12:00:00", tz="UTC")
-END_TIME = pd.Timestamp("2021-05-19 14:00:00", tz="UTC")
+#START_TIME = pd.Timestamp("2021-05-19 12:00:00", tz="UTC")
+#END_TIME = pd.Timestamp("2021-05-19 14:00:00", tz="UTC")
+START_TIME = pd.Timestamp("2021-05-19 04:00:00", tz="UTC")
+END_TIME = pd.Timestamp("2021-05-19 06:00:00", tz="UTC")
 
 # Timestamp format used to encode the analysis window in processed filenames
 _FILENAME_TIME_FMT = "%Y%m%dT%H%M%S"
 
 
 def processed_filename(currency, freq, start_time=None, end_time=None):
-    """Build the filename for a processed data file.
-
-    Files covering the default analysis window (START_TIME/END_TIME) keep the
-    plain, un-suffixed name so callers can always find them without knowing
-    the window. A custom window is encoded into the filename so it doesn't
-    collide with the default output.
-    """
+    """Build the filename for a processed data file with timestamp encoding."""
     label = "tick" if freq == "Tick" else freq
     start_time = START_TIME if start_time is None else pd.Timestamp(start_time)
     end_time = END_TIME if end_time is None else pd.Timestamp(end_time)
-
-    if start_time == START_TIME and end_time == END_TIME:
-        return f"{currency}_{label}_processed.parquet"
 
     start_str = start_time.strftime(_FILENAME_TIME_FMT)
     end_str = end_time.strftime(_FILENAME_TIME_FMT)
