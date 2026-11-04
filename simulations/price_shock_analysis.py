@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from IPython.display import display
+from matplotlib.ticker import FuncFormatter, MultipleLocator
 
 from utils.data_io import processed_filename
 from utils.paths import DATA_PROCESSED
@@ -74,7 +75,8 @@ ax.text(
     color="gray",
 )
 
-ax.set_ylim(5 * eta_lower, 5 * eta_upper)
+ax.set_xlim(start_time, end_time)
+ax.set_ylim(3 * eta_lower, 3 * eta_upper)
 ax.set_title("Log Returns with Shock Thresholds")
 ax.set_xlabel("Timestamp")
 ax.set_ylabel("Log Return")
@@ -96,26 +98,33 @@ df_unshocked["price_shocked"] = df_unshocked["price"] * shock_factor.to_numpy()
 
 
 # Plot prices from before crash, during crash, and before crash with artificial shocks
+# The series cover different times of day, so align them on minutes since their own start
+minutes_elapsed = (df["timestamp"] - df["timestamp"].iloc[0]).dt.total_seconds() / 60
+minutes_elapsed_unshocked = (df_unshocked["timestamp"] - df_unshocked["timestamp"].iloc[0]).dt.total_seconds() / 60
+
 fig, ax = plt.subplots(figsize=(12, 6))
 ax.plot(
-    df_unshocked.index, df_unshocked["price"],
+    minutes_elapsed_unshocked, df_unshocked["price"],
     color=TRACE_COLORS[0], linewidth=1,
-    label="04:00 - 06:00 price"
+    label="Background Path"
     )
 ax.plot(
-    df.index, df["price"],
+    minutes_elapsed, df["price"],
     color=TRACE_COLORS[1], linewidth=1,
-    label="12:00 - 14:00 price"
+    label="Shocked Reference Path"
     )
 ax.plot(
-    df_unshocked.index, df_unshocked["price_shocked"],
+    minutes_elapsed_unshocked, df_unshocked["price_shocked"],
     color=TRACE_COLORS[2], linewidth=1,
-    label="04:00 - 06:00 price (shocked)"
+    label="Background Path with injected Shocks"
     )
 
 #ax.set_ylim(0, 1.2 * df["price"].max())
-ax.set_title("Unshocked Price")
-ax.set_xlabel("Index")
+ax.set_title("Application of Shocks from Flash Crash to Background Series")
+ax.set_xlim(0, (end_time - start_time).total_seconds() / 60)
+ax.xaxis.set_major_locator(MultipleLocator(15))
+ax.xaxis.set_major_formatter(FuncFormatter(lambda m, _: f"{int(m) // 60:02d}:{int(m) % 60:02d}"))
+ax.set_xlabel("Time Elapsed")
 ax.set_ylabel("Price")
 ax.legend()
 
