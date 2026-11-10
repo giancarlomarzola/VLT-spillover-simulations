@@ -631,16 +631,11 @@ with st.sidebar:
             spread_ask = ob_dict.get("spread_ask", 50) / 10000
             ob = Orderbook(
                 name=ob_dict["name"],
-                depth_bid=ob_dict.get("depth_bid", 50_000_000),
-                depth_ask=ob_dict.get("depth_ask", 50_000_000),
-                width_bid=width_bid,
-                width_ask=width_ask,
-                spread_bid=spread_bid,
-                spread_ask=spread_ask,
-                k_bid=k_curvature,
-                k_ask=k_curvature,
-                resilience_bid=resilience,
-                resilience_ask=resilience,
+                depth=(ob_dict.get("depth_bid", 50_000_000), ob_dict.get("depth_ask", 50_000_000)),
+                width=(width_bid, width_ask),
+                spread=(spread_bid, spread_ask),
+                k=k_curvature,
+                resilience=resilience,
             )
             selected_orderbooks[ob.name] = ob
 

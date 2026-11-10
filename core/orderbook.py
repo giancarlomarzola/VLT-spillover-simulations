@@ -1,48 +1,54 @@
+def _bid_ask(value, param):
+    """Split a parameter into (bid, ask): a single number applies to both sides."""
+    if isinstance(value, (tuple, list)):
+        if len(value) != 2:
+            raise ValueError(f"{param} must be a single number or a (bid, ask) pair, got {value!r}")
+        return value[0], value[1]
+    return value, value
+
+
 class Orderbook:
     """
-    Represents a limit orderbook with asymmetry between bid and ask sides.
+    Represents a limit orderbook, optionally asymmetric between bid and ask sides.
+
+    Every parameter except name takes either a single number, used for both the bid and
+    the ask side, or a (bid, ask) tuple of two numbers for an asymmetric book, e.g.
+    depth=50_000_000 or depth=(30_000_000, 50_000_000).
 
     Parameters:
         name: Human-readable name for this orderbook.
-        depth_bid/ask: Market depth on bid/ask side in USDT.
-        width_bid/ask: Maximum slippage at full depth on bid/ask side (in decimal, e.g., 0.01 for 1%).
-        spread_bid/ask: Spread at zero depth on bid side (in decimal, e.g., 0.005 for 0.5%).
-        k_bid/ask: Curvature parameter for slippage formula on bid/ask side. 
+        depth: Market depth in USDT.
+        width: Maximum slippage at full depth (in decimal, e.g., 0.01 for 1%).
+        spread: Spread at zero depth (in decimal, e.g., 0.005 for 0.5%).
+        k: Curvature parameter for slippage formula.
             k=1 gives linear slippage; k<1 gives convex curve; k>1 gives concave curve
-        resilience_bid/ask: Proportion of bid/ask side depth restored at each step 
+        resilience: Proportion of depth restored at each step
             (float between 0 and 1). 1=perfect resilience.
+
+    The per-side values are stored as <param>_bid and <param>_ask (e.g. width_bid,
+    width_ask). depth_bid/depth_ask track the current, possibly depleted, depth;
+    depth_bid_full/depth_ask_full keep the original depth.
     """
 
     def __init__(
         self,
-        name,
-        depth_bid,
-        depth_ask,
-        width_bid,
-        width_ask,
-        spread_bid,
-        spread_ask,
-        k_bid=1,
-        k_ask=1,
-        resilience_bid=1,
-        resilience_ask=1,
+        name: str,
+        depth: float | tuple[float, float],
+        width: float | tuple[float, float],
+        spread: float | tuple[float, float],
+        k: float | tuple[float, float] = 1,
+        resilience: float | tuple[float, float] = 1,
     ):
         if not isinstance(name, str):
             raise TypeError(f"name must be string, got {type(name)}")
 
         self.name = name
-        self.depth_bid_full = depth_bid  # Original depth
-        self.depth_ask_full = depth_ask
-        self.depth_bid = depth_bid  # Current depth (can be depleted)
-        self.depth_ask = depth_ask
-        self.width_bid = width_bid
-        self.width_ask = width_ask
-        self.spread_bid = spread_bid
-        self.spread_ask = spread_ask
-        self.k_bid = k_bid
-        self.k_ask = k_ask
-        self.resilience_bid = resilience_bid
-        self.resilience_ask = resilience_ask
+        self.depth_bid_full, self.depth_ask_full = _bid_ask(depth, "depth")  # Original depth
+        self.depth_bid, self.depth_ask = self.depth_bid_full, self.depth_ask_full  # Current depth (can be depleted)
+        self.width_bid, self.width_ask = _bid_ask(width, "width")
+        self.spread_bid, self.spread_ask = _bid_ask(spread, "spread")
+        self.k_bid, self.k_ask = _bid_ask(k, "k")
+        self.resilience_bid, self.resilience_ask = _bid_ask(resilience, "resilience")
 
     def _log_parameters(self):
         """Log orderbook parameters for verification."""
