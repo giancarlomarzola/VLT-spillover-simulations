@@ -1,10 +1,12 @@
 import pandas as pd
+import plotly.graph_objects as go
 from IPython.display import display
 
 from core.orderbook import Orderbook
 from core.price_process import generate_gbm_price_series
 from core.simulation import run_simulation, summarise_run
 from core.variable_leverage_product import VLETP
+from utils.simulation_plots import plot_leverage, plot_orderbook_depth, plot_prices  # noqa: F401 (interactive use)
 
 # Products
 gbm_up = VLETP(
@@ -77,7 +79,9 @@ resilience_orderbook = Orderbook(
     resilience=pd.Timedelta("2h"),
 )
 
+# None = no orderbook: rebalances have no price impact (the reference run)
 orderbooks = [
+    None,
     baseline_orderbook,
     depth_orderbook,
     width_orderbook,
@@ -89,7 +93,7 @@ orderbooks = [
 
 # Price process: raw GBM paths, indexed by time elapsed since the start.
 # Same seed for every path, so they differ only in volatility.
-seed = 42
+seed = 64
 volatilities = [0.2, 0.4, 0.6, 0.8, 1.0]
 
 price_series = {
@@ -104,18 +108,48 @@ price_series = {
     for sigma in volatilities
 }
 
+# Raw vol_60 path, as a check before running the simulations
+vol_60 = price_series["vol_60"]
+fig = go.Figure(go.Scatter(x=vol_60.index.total_seconds() / 86_400, y=vol_60, mode="lines", name="vol_60"))
+fig.update_layout(
+    title="GBM price path, 60% volatility",
+    xaxis_title="Time elapsed (days)",
+    yaxis_title="Price",
+    template="plotly_white",
+)
+fig.show()
+
 # Summary: one row of headline outcomes per (price series, orderbook) run
 summary_rows = []
+results = {}  # full output of every run, keyed by (price series, orderbook), e.g. results["vol_60", "depth"]
 for price_label, prices in price_series.items():
     for orderbook in orderbooks:
-        print(f"Running {price_label} / {orderbook.name}")
+        orderbook_label = "no_orderbook" if orderbook is None else orderbook.name
+        print(f"Running {price_label} / {orderbook_label}")
         result = run_simulation(gbm_up, orderbook, prices)
-        summary_rows.append({"price_series": price_label, "orderbook": orderbook.name, **summarise_run(result)})
+        results[price_label, orderbook_label] = result
+        summary_rows.append(
+            {"price_series": price_label, "orderbook": orderbook_label, **summarise_run(result, gbm_up)}
+        )
 
 summary = pd.DataFrame(summary_rows).set_index(["price_series", "orderbook"])
 
-# Sizes and NAVs in quote currency, price impacts in bps, vols in %
+# Sizes, depths and NAVs in quote currency, price impacts and deviations in bps, vols in %
 formats = {column: "{:,.0f}" for column in summary.columns}
-formats |= {column: (lambda x: f"{x * 1e4:.2f} bps") for column in summary.columns if column.endswith("_impact")}
-formats |= {"realised_vol_raw": "{:.2%}", "realised_vol_simulated": "{:.2%}", "realised_vol_ratio": "{:.5f}"}
+formats |= {
+    column: (lambda x: f"{x * 1e4:.2f} bps")
+    for column in summary.columns
+    if column.endswith(("_impact", "_price_deviation"))
+}
+formats |= {column: str for column in summary.columns if column.startswith("wipeout_time_")}
+formats |= {
+    "fill_ratio": "{:.2%}",
+    "realised_vol_raw": "{:.2%}",
+    "realised_vol_simulated": "{:.2%}",
+    "realised_vol_ratio": "{:.5f}",
+}
 display(summary.style.format(formats, na_rep="-"))
+
+
+# To use util plots for results in interactive window:
+# plot_prices(results["vol_60", "depth"])
