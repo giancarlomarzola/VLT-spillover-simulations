@@ -77,6 +77,8 @@ def run_simulation(
         raise ValueError("prices must not be empty")
 
     price = prices.to_numpy(dtype=float)
+    # Seconds since the previous price, used to replenish the orderbook (NaN at t = 0)
+    seconds_since_previous_step = prices.index.to_series().diff().dt.total_seconds().to_numpy()
     for product in vletps:
         product.reset()
     if orderbook is not None:
@@ -142,7 +144,7 @@ def run_simulation(
         m_lag = m_prev
 
         if orderbook is not None:
-            orderbook.replenish()  # one step of recovery before the next trade
+            orderbook.replenish(seconds_since_previous_step[t])
 
     return pd.DataFrame(out, columns=columns, index=prices.index)
 

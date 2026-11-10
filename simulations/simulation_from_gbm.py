@@ -5,7 +5,6 @@ from core.orderbook import Orderbook
 from core.price_process import generate_gbm_price_series
 from core.simulation import run_simulation, summarise_run
 from core.variable_leverage_product import VLETP
-from utils.simulation_plots import plot_prices
 
 # Products
 gbm_up = VLETP(
@@ -22,7 +21,7 @@ baseline_depth = 50_000_000
 baseline_width = 0.01
 baseline_spread = 0.005 / 100
 baseline_k = 0.3
-baseline_resilience = 0.2
+baseline_resilience = 0  # time to fully replenish the orderbook
 
 baseline_orderbook = Orderbook(
     name="baseline",
@@ -75,7 +74,7 @@ resilience_orderbook = Orderbook(
     width=baseline_width,
     spread=baseline_spread,
     k=baseline_k,
-    resilience=0.1 * baseline_resilience,
+    resilience=pd.Timedelta("2h"),
 )
 
 orderbooks = [
@@ -120,11 +119,3 @@ formats = {column: "{:,.0f}" for column in summary.columns}
 formats |= {column: (lambda x: f"{x * 1e4:.2f} bps") for column in summary.columns if column.endswith("_impact")}
 formats |= {"realised_vol_raw": "{:.2%}", "realised_vol_simulated": "{:.2%}", "realised_vol_ratio": "{:.5f}"}
 display(summary.style.format(formats, na_rep="-"))
-
-# Simulation: results hold both raw_price (the GBM path) and simulated_price (with VLETP impact)
-# results = {baseline_orderbook.name: run_simulation(gbm_up, baseline_orderbook, price_series["vol_100"])}
-
-# Plots
-# plot_resample_freq = None  # e.g. "30s"; None = no resampling
-
-# plot_prices(results, resample_freq=plot_resample_freq, title_prefix="GBM").show()

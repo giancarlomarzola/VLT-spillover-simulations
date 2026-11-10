@@ -311,7 +311,7 @@ with st.sidebar:
         max_value=1.0,
         value=default_resilience,
         step=0.01,
-        help="0: no resilience (orderbook doesn't recover). 1: perfect resilience.",
+        help="Fraction of full depth restored per second. 0: orderbook doesn't recover. 1: refills within a second.",
     )
 
     default_include_baseline = (saved_config.get("include_baseline") if saved_config else None) or (
@@ -635,7 +635,8 @@ with st.sidebar:
                 width=(width_bid, width_ask),
                 spread=(spread_bid, spread_ask),
                 k=k_curvature,
-                resilience=resilience,
+                # Orderbook takes the time to fully replenish, in seconds (None = never)
+                resilience=1 / resilience if resilience > 0 else None,
             )
             selected_orderbooks[ob.name] = ob
 

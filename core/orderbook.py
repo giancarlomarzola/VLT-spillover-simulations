@@ -1,3 +1,18 @@
+import math
+
+import pandas as pd
+
+
+def _replenish_seconds(value):
+    """Convert a resilience value (duration string, Timedelta, seconds or None) to seconds."""
+    if value is None:
+        return math.inf
+    seconds = pd.Timedelta(value).total_seconds() if isinstance(value, (str, pd.Timedelta)) else float(value)
+    if seconds < 0:
+        raise ValueError(f"resilience must not be negative, got {value!r}")
+    return seconds
+
+
 def _bid_ask(value, param):
     """Split a parameter into (bid, ask): a single number applies to both sides."""
     if isinstance(value, (tuple, list)):
@@ -22,12 +37,13 @@ class Orderbook:
         spread: Spread at zero depth (in decimal, e.g., 0.005 for 0.5%).
         k: Curvature parameter for slippage formula.
             k=1 gives linear slippage; k<1 gives convex curve; k>1 gives concave curve
-        resilience: Proportion of full depth restored per simulation step, whatever the
-            length of a step (float between 0 and 1). 0=depth never recovers,
-            1=fully restored after every step (perfect resilience).
+        resilience: Time needed to fully replenish an empty book, as a duration string or
+            Timedelta (e.g. "30min", "2h") or a number of seconds. Depth recovers linearly,
+            so half that time restores half of full depth. 0=replenished instantly
+            (perfect resilience, the default), None=depth never recovers.
 
     The per-side values are stored as <param>_bid and <param>_ask (e.g. width_bid,
-    width_ask). depth_bid/depth_ask track the current, possibly depleted, depth;
+    width_ask); resilience_bid/resilience_ask are stored in seconds. depth_bid/depth_ask track the current, possibly depleted, depth;
     depth_bid_full/depth_ask_full keep the original depth.
     """
 
@@ -38,7 +54,7 @@ class Orderbook:
         width: float | tuple[float, float],
         spread: float | tuple[float, float],
         k: float | tuple[float, float] = 1,
-        resilience: float | tuple[float, float] = 1,
+        resilience: str | float | pd.Timedelta | None | tuple = 0,
     ):
         if not isinstance(name, str):
             raise TypeError(f"name must be string, got {type(name)}")
@@ -49,7 +65,10 @@ class Orderbook:
         self.width_bid, self.width_ask = _bid_ask(width, "width")
         self.spread_bid, self.spread_ask = _bid_ask(spread, "spread")
         self.k_bid, self.k_ask = _bid_ask(k, "k")
-        self.resilience_bid, self.resilience_ask = _bid_ask(resilience, "resilience")
+        resilience_bid, resilience_ask = _bid_ask(resilience, "resilience")
+        # Seconds needed to fully replenish each side (inf = never)
+        self.resilience_bid = _replenish_seconds(resilience_bid)
+        self.resilience_ask = _replenish_seconds(resilience_ask)
 
     def reset(self):
         """Restore both sides to full depth, undoing any depletion from earlier trades."""
@@ -64,7 +83,7 @@ class Orderbook:
         print(f"  Width (decimal):   bid={self.width_bid:>15.6f}  ask={self.width_ask:>15.6f}")
         print(f"  Spread (decimal):  bid={self.spread_bid:>15.6f}  ask={self.spread_ask:>15.6f}")
         print(f"  Curvature (k):     bid={self.k_bid:>15.6f}  ask={self.k_ask:>15.6f}")
-        print(f"  Resilience:        bid={self.resilience_bid:>15.6f}  ask={self.resilience_ask:>15.6f}")
+        print(f"  Resilience (s):    bid={self.resilience_bid:>15,.1f}  ask={self.resilience_ask:>15,.1f}")
         print(f"{'=' * 60}\n")
 
     def execute_transaction(self, token_amount, effective_price):
@@ -112,25 +131,35 @@ class Orderbook:
         slippage = s if token_amount > 0 else -s
         return slippage, scale
 
-    def replenish(self):
+    def replenish(self, seconds_elapsed):
         """
-        Replenish orderbook depth on both sides for one simulation step.
+        Replenish orderbook depth on both sides for the time that has passed.
 
-        Each side regains resilience * full depth, capped at full depth. Call once per
-        step; the amount restored does not depend on how much time a step represents.
+        Each side regains the fraction seconds_elapsed / resilience of its full depth
+        (resilience being the time needed to refill completely), capped at full depth.
+
+        Args:
+            seconds_elapsed: Time since the previous replenishment, in seconds
         """
-        depth_restored_per_step_bid = self.resilience_bid * self.depth_bid_full
-        depth_restored_per_step_ask = self.resilience_ask * self.depth_ask_full
+        fraction_restored_bid = self._fraction_restored(seconds_elapsed, self.resilience_bid)
+        fraction_restored_ask = self._fraction_restored(seconds_elapsed, self.resilience_ask)
 
-        self.depth_bid = min(self.depth_bid + depth_restored_per_step_bid, self.depth_bid_full)
-        self.depth_ask = min(self.depth_ask + depth_restored_per_step_ask, self.depth_ask_full)
+        self.depth_bid = min(self.depth_bid + fraction_restored_bid * self.depth_bid_full, self.depth_bid_full)
+        self.depth_ask = min(self.depth_ask + fraction_restored_ask * self.depth_ask_full, self.depth_ask_full)
+
+    @staticmethod
+    def _fraction_restored(seconds_elapsed, seconds_to_full):
+        """Fraction of full depth restored in seconds_elapsed, between 0 and 1."""
+        if seconds_to_full == 0:
+            return 1.0  # instant replenishment
+        return min(seconds_elapsed / seconds_to_full, 1.0)
 
     def __repr__(self):
         k_part = "" if (self.k_bid == 1 and self.k_ask == 1) else f", k_bid={self.k_bid}, k_ask={self.k_ask}"
         resilience_part = (
             ""
-            if (self.resilience_bid == 1 and self.resilience_ask == 1)
-            else f", resilience_bid={self.resilience_bid}, resilience_ask={self.resilience_ask}"
+            if (self.resilience_bid == 0 and self.resilience_ask == 0)
+            else f", resilience_bid={self.resilience_bid}s, resilience_ask={self.resilience_ask}s"
         )
 
         return (

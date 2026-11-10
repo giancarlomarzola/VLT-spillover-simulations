@@ -263,9 +263,13 @@ def run_simulation(
 
         m_lag = m_prev  # becomes m_{t-1}, needed as the lag term at t+1
 
-        # Replenish orderbook depth by one step for next iteration
+        # Replenish orderbook depth for next iteration, by the time elapsed since the previous step
         if has_orderbook:
-            orderbook.replenish()
+            if timestamps is not None:
+                seconds_elapsed = (timestamps[t] - timestamps[t - 1]) / np.timedelta64(1, "s")
+            else:
+                seconds_elapsed = 1.0  # Assume 1 second steps if no timestamps provided
+            orderbook.replenish(seconds_elapsed)
 
     result_df = pd.DataFrame(out, columns=COLUMNS)
     if timestamps is not None:

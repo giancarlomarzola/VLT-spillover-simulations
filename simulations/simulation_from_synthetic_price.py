@@ -19,7 +19,7 @@ start_nav_down = 20_000_000
 start_exposure_down = -60_000_000
 
 k = 0.3
-resilience = 0.2
+resilience = "5s"  # time to fully replenish the orderbook
 
 # Display options
 show_hover_info = True
