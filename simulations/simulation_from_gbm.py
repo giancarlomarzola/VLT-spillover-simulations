@@ -109,10 +109,11 @@ price_series = {
 }
 
 # Raw vol_60 path, as a check before running the simulations
-vol_60 = price_series["vol_60"]
-fig = go.Figure(go.Scatter(x=vol_60.index.total_seconds() / 86_400, y=vol_60, mode="lines", name="vol_60"))
+vol = 0.6
+plot_series = price_series[f"vol_{round(100*vol)}"]
+fig = go.Figure(go.Scatter(x=plot_series.index.total_seconds() / 86_400, y=plot_series, mode="lines", name="vol_60"))
 fig.update_layout(
-    title="GBM price path, 60% volatility",
+    title=f"GBM price path, {round(vol*100)}% volatility, seed={seed}",
     xaxis_title="Time elapsed (days)",
     yaxis_title="Price",
     template="plotly_white",
@@ -153,3 +154,4 @@ display(summary.style.format(formats, na_rep="-"))
 
 # To use util plots for results in interactive window:
 # plot_prices(results["vol_60", "depth"])
+# plot_leverage(results["vol_100", "depth"], gbm_up)
