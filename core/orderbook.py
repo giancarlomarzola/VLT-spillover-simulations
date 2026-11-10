@@ -42,8 +42,9 @@ class Orderbook:
             so half that time restores half of full depth. 0=replenished instantly
             (perfect resilience, the default), None=depth never recovers.
 
-    The per-side values are stored as <param>_bid and <param>_ask (e.g. width_bid,
-    width_ask); resilience_bid/resilience_ask are stored in seconds. depth_bid/depth_ask track the current, possibly depleted, depth;
+    The per-side values are stored as <param>_bid and <param>_ask (e.g. width_bid, width_ask); 
+    resilience_bid/resilience_ask are stored in seconds. 
+    depth_bid/depth_ask track the current, possibly depleted, depth;
     depth_bid_full/depth_ask_full keep the original depth.
     """
 
