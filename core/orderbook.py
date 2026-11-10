@@ -50,6 +50,10 @@ class Orderbook:
         self.k_bid, self.k_ask = _bid_ask(k, "k")
         self.resilience_bid, self.resilience_ask = _bid_ask(resilience, "resilience")
 
+    def reset(self):
+        """Restore both sides to full depth, undoing any depletion from earlier trades."""
+        self.depth_bid, self.depth_ask = self.depth_bid_full, self.depth_ask_full
+
     def _log_parameters(self):
         """Log orderbook parameters for verification."""
         print(f"\n{'=' * 60}")
