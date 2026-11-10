@@ -82,6 +82,65 @@ def _layout(fig, title, title_prefix, height):
     fig.update_yaxes(**_AXIS)
 
 
+def _rebalance_trace(delta, resample_freq, unit_from, name, color, show_hover, x_hover):
+    """
+    Stem trace of rebalance sizes (absolute trade size per step, summed per period when
+    resampling) on the secondary axis, hidden until clicked in the legend.
+
+    delta: Series of signed rebalance trades. unit_from: index of the main trace, so both
+    share the same time unit. Returns None if there are no rebalances.
+    """
+    size = delta.abs()
+    if resample_freq and resample_freq != "raw":
+        size = size.resample(resample_freq).sum()
+    size = size[size > 0]
+    if not len(size):
+        return None
+
+    rx, _, _ = _time_axis(size.index, unit_from=unit_from)
+    stem_x, stem_y = [], []
+    for xi, yi in zip(rx, size.to_numpy()):
+        stem_x += [xi, xi, None]
+        stem_y += [0, yi, None]
+    return go.Scatter(
+        x=stem_x,
+        y=stem_y,
+        mode="lines",
+        name=f"{name} rebalances",
+        line={"color": color, "width": 2},
+        yaxis="y2",
+        legend="legend2",
+        visible="legendonly",
+        **_hover(show_hover, f"<b>{name} rebalance</b><br>Time: {x_hover}<br>Size: $%{{y:,.0f}}<extra></extra>"),
+    )
+
+
+def _rebalance_layout(fig, side):
+    """Add the secondary axis and the legend (bottom 'left' or 'right') for rebalance traces."""
+    fig.update_layout(
+        # Always show the main legend, even with a single main trace: when Plotly hides it,
+        # clicks on the rebalance legend do nothing in plotly.js 2.x (bundled by VS Code)
+        showlegend=True,
+        yaxis2={
+            **_AXIS,
+            "title": "Rebalance Size",
+            "overlaying": "y",
+            "side": "right",
+            "rangemode": "tozero",
+            "showgrid": False,
+            "zeroline": False,
+        },
+        legend2={
+            **_LEGEND,
+            "title": "Rebalances",
+            "x": 0.98 if side == "right" else 0.02,
+            "y": 0.02,
+            "xanchor": side,
+            "yanchor": "bottom",
+        },
+    )
+
+
 def plot_prices(results, resample_freq=None, show_hover=True, title_prefix=""):
     """
     Plot the raw price path (no VLETP impact) against the simulated price of each run.
@@ -116,33 +175,12 @@ def plot_prices(results, resample_freq=None, show_hover=True, title_prefix=""):
             )
         )
 
-        rebalance_size = df["actual_total_delta"].abs()
-        if resample_freq and resample_freq != "raw":
-            rebalance_size = rebalance_size.resample(resample_freq).sum()
-        rebalance_size = rebalance_size[rebalance_size > 0]
-        if len(rebalance_size):
+        trace = _rebalance_trace(
+            df["actual_total_delta"], resample_freq, resampled.index, name, color, show_hover, x_hover
+        )
+        if trace is not None:
             has_rebalances = True
-            rx, _, _ = _time_axis(rebalance_size.index, unit_from=resampled.index)
-            stem_x, stem_y = [], []
-            for xi, size in zip(rx, rebalance_size.to_numpy()):
-                stem_x += [xi, xi, None]
-                stem_y += [0, size, None]
-            fig.add_trace(
-                go.Scatter(
-                    x=stem_x,
-                    y=stem_y,
-                    mode="lines",
-                    name=f"{name} rebalances",
-                    line={"color": color, "width": 2},
-                    yaxis="y2",
-                    legend="legend2",
-                    visible="legendonly",
-                    **_hover(
-                        show_hover,
-                        f"<b>{name} rebalance</b><br>Time: {x_hover}<br>Size: $%{{y:,.0f}}<extra></extra>",
-                    ),
-                )
-            )
+            fig.add_trace(trace)
 
     # Raw price last, so it is drawn on top
     raw = _resample(next(iter(results.values())), resample_freq)
@@ -165,25 +203,7 @@ def plot_prices(results, resample_freq=None, show_hover=True, title_prefix=""):
         legend={**_LEGEND, "title": "Price", "x": 0.02, "y": 0.02, "xanchor": "left", "yanchor": "bottom"},
     )
     if has_rebalances:
-        fig.update_layout(
-            yaxis2={
-                **_AXIS,
-                "title": "Rebalance Size",
-                "overlaying": "y",
-                "side": "right",
-                "rangemode": "tozero",
-                "showgrid": False,
-                "zeroline": False,
-            },
-            legend2={
-                **_LEGEND,
-                "title": "Rebalances",
-                "x": 0.98,
-                "y": 0.02,
-                "xanchor": "right",
-                "yanchor": "bottom",
-            },
-        )
+        _rebalance_layout(fig, side="right")
     return fig
 
 
@@ -193,11 +213,15 @@ def plot_leverage(results, vletps, after_rebalance=False, resample_freq=None, sh
 
     Short products are drawn below zero, long products above.
 
+    The size of each product's own rebalance trades is available on a secondary axis;
+    those traces are hidden until clicked in the legend.
+
     Args:
         results: Results DataFrame, or dict of {label: DataFrame}
         vletps: The VLETP (or list of VLETPs) that were simulated
         after_rebalance: Plot leverage after each step's rebalance instead of before it
         resample_freq: Resample frequency (e.g. '30s', '1min'). None = no resampling.
+            Leverage takes the last value in each period, rebalance sizes are summed.
         show_hover: Whether to show hover info
         title_prefix: Prefix for the plot title (e.g. "GBM")
     """
@@ -206,6 +230,7 @@ def plot_leverage(results, vletps, after_rebalance=False, resample_freq=None, sh
     prefix = "leverage_after" if after_rebalance else "leverage"
     fig = go.Figure()
     x_title = "Time"
+    has_rebalances = False
 
     trace_idx = 0
     for name, df in results.items():
@@ -213,6 +238,7 @@ def plot_leverage(results, vletps, after_rebalance=False, resample_freq=None, sh
         x, x_title, x_hover = _time_axis(resampled.index)
         for product in vletps:
             label = product.name if len(results) == 1 else f"{name} - {product.name}"
+            color = TRACE_COLORS[trace_idx % len(TRACE_COLORS)]
             leverage = resampled[f"{prefix}_{product.name}"]
             fig.add_trace(
                 go.Scatter(
@@ -220,10 +246,16 @@ def plot_leverage(results, vletps, after_rebalance=False, resample_freq=None, sh
                     y=product.direction * leverage,
                     mode="lines",
                     name=label,
-                    line={"color": TRACE_COLORS[trace_idx % len(TRACE_COLORS)], "width": 2},
+                    line={"color": color, "width": 2},
                     **_hover(show_hover, f"<b>{label}</b><br>Time: {x_hover}<br>Leverage: %{{y:.3f}}<extra></extra>"),
                 )
             )
+            trace = _rebalance_trace(
+                df[f"actual_delta_{product.name}"], resample_freq, resampled.index, label, color, show_hover, x_hover
+            )
+            if trace is not None:
+                has_rebalances = True
+                fig.add_trace(trace)
             trace_idx += 1
 
     timing = "After Rebalance" if after_rebalance else "Before Rebalance"
@@ -231,9 +263,11 @@ def plot_leverage(results, vletps, after_rebalance=False, resample_freq=None, sh
     fig.update_layout(
         xaxis_title=x_title,
         yaxis_title="Leverage (λ)",
-        legend={**_LEGEND, "x": 0.98, "y": 0.02, "xanchor": "right", "yanchor": "bottom"},
+        legend={**_LEGEND, "title": "Leverage", "x": 0.98, "y": 0.02, "xanchor": "right", "yanchor": "bottom"},
     )
     fig.update_yaxes(zeroline=True, zerolinecolor="gray", zerolinewidth=1)
+    if has_rebalances:
+        _rebalance_layout(fig, side="left")
 
     # Leverage band boundaries, once per distinct level
     bounds = set()
