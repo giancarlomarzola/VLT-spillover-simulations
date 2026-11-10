@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from core.orderbook import Orderbook
+from core.price_process import SECONDS_PER_YEAR
 from core.variable_leverage_product import VLETP
 
 # VLETP.state() key -> prefix of the per-product output column, e.g. "nav_BTCUP"
@@ -76,9 +77,6 @@ def run_simulation(
         raise ValueError("prices must not be empty")
 
     price = prices.to_numpy(dtype=float)
-    # Seconds since the previous price, used to replenish the orderbook (NaN at t = 0)
-    step_seconds = prices.index.to_series().diff().dt.total_seconds().to_numpy()
-
     for product in vletps:
         product.reset()
     if orderbook is not None:
@@ -144,6 +142,65 @@ def run_simulation(
         m_lag = m_prev
 
         if orderbook is not None:
-            orderbook.replenish(step_seconds[t])
+            orderbook.replenish()  # one step of recovery before the next trade
 
     return pd.DataFrame(out, columns=columns, index=prices.index)
+
+
+def _realised_volatility(price: pd.Series) -> float:
+    """Annualised standard deviation of log returns, using the median time step of the index."""
+    log_returns = np.log(price).diff().dropna()
+    step_seconds = price.index.to_series().diff().dt.total_seconds().median()
+    if len(log_returns) < 2 or not step_seconds > 0:
+        return np.nan
+    return float(log_returns.std() * np.sqrt(SECONDS_PER_YEAR / step_seconds))
+
+
+def summarise_run(result: pd.DataFrame) -> dict:
+    """
+    Reduce the output of run_simulation to one row of headline outcomes.
+
+    A rebalance is a step with a non-zero executed net trade (actual_total_delta), i.e. the
+    trade that reaches the orderbook after netting all products. Sizes are in quote currency.
+
+    Price impact is the slippage caused by a single rebalance (orderbook_effect), as a
+    decimal: positive when the net trade is a buy, negative when it is a sell. Averages are
+    taken over the rebalances of that sign only, not over every time step. Statistics with
+    no rebalances to average over are NaN.
+
+    Realised volatility is the annualised standard deviation of log returns.
+
+    Returns a dict with:
+        n_rebalances, avg_rebalance_size, total_abs_rebalance_size,
+        avg_positive_impact, avg_negative_impact, avg_abs_impact,
+        max_positive_impact, max_negative_impact (the most negative one),
+        final_nav_<product name> for each product,
+        realised_vol_raw, realised_vol_simulated,
+        realised_vol_ratio (simulated / raw; above 1 means rebalancing added volatility).
+    """
+    rebalances = result[result["actual_total_delta"] != 0]
+    size = rebalances["actual_total_delta"].abs()
+    impact = rebalances["orderbook_effect"]
+    positive = impact[impact > 0]
+    negative = impact[impact < 0]
+
+    summary = {
+        "n_rebalances": len(rebalances),
+        "avg_rebalance_size": size.mean(),
+        "total_abs_rebalance_size": size.sum(),
+        "avg_positive_impact": positive.mean(),
+        "avg_negative_impact": negative.mean(),
+        "avg_abs_impact": impact.abs().mean(),
+        "max_positive_impact": positive.max(),
+        "max_negative_impact": negative.min(),
+    }
+    for column in result.columns:
+        if column.startswith("nav_"):
+            summary[f"final_{column}"] = result[column].iloc[-1]
+
+    vol_raw = _realised_volatility(result["raw_price"])
+    vol_simulated = _realised_volatility(result["simulated_price"])
+    summary["realised_vol_raw"] = vol_raw
+    summary["realised_vol_simulated"] = vol_simulated
+    summary["realised_vol_ratio"] = vol_simulated / vol_raw if vol_raw > 0 else np.nan
+    return summary

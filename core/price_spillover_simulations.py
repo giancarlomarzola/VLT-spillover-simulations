@@ -263,13 +263,9 @@ def run_simulation(
 
         m_lag = m_prev  # becomes m_{t-1}, needed as the lag term at t+1
 
-        # Replenish orderbook depth for next iteration
+        # Replenish orderbook depth by one step for next iteration
         if has_orderbook:
-            if timestamps is not None:
-                time_delta = (timestamps[t] - timestamps[t - 1]) / np.timedelta64(1, "s")  # Convert to seconds
-            else:
-                time_delta = 1.0  # Default to 1 unit of time if no timestamps provided
-            orderbook.replenish(time_delta)
+            orderbook.replenish()
 
     result_df = pd.DataFrame(out, columns=COLUMNS)
     if timestamps is not None:

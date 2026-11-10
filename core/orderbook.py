@@ -22,8 +22,9 @@ class Orderbook:
         spread: Spread at zero depth (in decimal, e.g., 0.005 for 0.5%).
         k: Curvature parameter for slippage formula.
             k=1 gives linear slippage; k<1 gives convex curve; k>1 gives concave curve
-        resilience: Proportion of depth restored at each step
-            (float between 0 and 1). 1=perfect resilience.
+        resilience: Proportion of full depth restored per simulation step, whatever the
+            length of a step (float between 0 and 1). 0=depth never recovers,
+            1=fully restored after every step (perfect resilience).
 
     The per-side values are stored as <param>_bid and <param>_ask (e.g. width_bid,
     width_ask). depth_bid/depth_ask track the current, possibly depleted, depth;
@@ -111,22 +112,18 @@ class Orderbook:
         slippage = s if token_amount > 0 else -s
         return slippage, scale
 
-    def replenish(self, time_delta):
+    def replenish(self):
         """
-        Replenish orderbook depth on both sides between trades.
-        Replenishes by resilience*depth_full per time step, capped at full depth.
+        Replenish orderbook depth on both sides for one simulation step.
 
-        Args:
-            time_delta: Elapsed time since the previous rebalancing trade (Δ)
+        Each side regains resilience * full depth, capped at full depth. Call once per
+        step; the amount restored does not depend on how much time a step represents.
         """
-        self.depth_bid = min(
-            self.depth_bid + self.resilience_bid * self.depth_bid_full * time_delta,
-            self.depth_bid_full,
-        )
-        self.depth_ask = min(
-            self.depth_ask + self.resilience_ask * self.depth_ask_full * time_delta,
-            self.depth_ask_full,
-        )
+        depth_restored_per_step_bid = self.resilience_bid * self.depth_bid_full
+        depth_restored_per_step_ask = self.resilience_ask * self.depth_ask_full
+
+        self.depth_bid = min(self.depth_bid + depth_restored_per_step_bid, self.depth_bid_full)
+        self.depth_ask = min(self.depth_ask + depth_restored_per_step_ask, self.depth_ask_full)
 
     def __repr__(self):
         k_part = "" if (self.k_bid == 1 and self.k_ask == 1) else f", k_bid={self.k_bid}, k_ask={self.k_ask}"
