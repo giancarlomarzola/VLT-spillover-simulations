@@ -158,9 +158,18 @@ def _realised_volatility(price: pd.Series) -> float:
     return float(log_returns.std() * np.sqrt(SECONDS_PER_YEAR / step_seconds))
 
 
-def summarise_run(result: pd.DataFrame) -> dict:
+def _longest_run(mask: np.ndarray) -> int:
+    """Length of the longest run of consecutive True values."""
+    padded = np.concatenate(([False], mask, [False])).astype(int)
+    edges = np.flatnonzero(np.diff(padded))  # alternating run starts and ends
+    return int((edges[1::2] - edges[::2]).max()) if len(edges) else 0
+
+
+def summarise_run(result: pd.DataFrame, vletps: VLETP | list[VLETP]) -> dict:
     """
     Reduce the output of run_simulation to one row of headline outcomes.
+
+    vletps: the product(s) the simulation was run with, needed for their leverage bands.
 
     A rebalance is a step with a non-zero executed net trade (actual_total_delta), i.e. the
     trade that reaches the orderbook after netting all products. Sizes are in quote currency.
@@ -170,35 +179,69 @@ def summarise_run(result: pd.DataFrame) -> dict:
     taken over the rebalances of that sign only, not over every time step. Statistics with
     no rebalances to average over are NaN.
 
+    Price deviation is the cumulative effect of all rebalances on the price so far
+    (price_multiplier - 1), as a decimal.
+
     Realised volatility is the annualised standard deviation of log returns.
 
     Returns a dict with:
-        n_rebalances, avg_rebalance_size, total_abs_rebalance_size,
+        n_rebalances, longest_rebalance_run (most consecutive steps with a rebalance),
+        avg_rebalance_size, total_abs_rebalance_size,
+        fill_ratio (executed / wanted rebalance volume; below 1 means the orderbook ran
+            out of depth; NaN if no product ever wanted to trade),
         avg_positive_impact, avg_negative_impact, avg_abs_impact,
         max_positive_impact, max_negative_impact (the most negative one),
-        final_nav_<product name> for each product,
+        final_price_deviation, max_price_deviation, min_price_deviation,
+        min_depth_bid, min_depth_ask (lowest depth reached, in quote currency, measured
+            right after a trade and before replenishment; NaN without an orderbook),
+        and for each product:
+            final_nav_<name>,
+            wipeout_time_<name> (index value of the step where NAV hit zero, NaT if never),
+            n_outside_band_<name> (steps where leverage after the rebalance was still
+                outside the leverage band, because the trade was not fully filled),
         realised_vol_raw, realised_vol_simulated,
         realised_vol_ratio (simulated / raw; above 1 means rebalancing added volatility).
     """
-    rebalances = result[result["actual_total_delta"] != 0]
+    if isinstance(vletps, VLETP):
+        vletps = [vletps]
+
+    is_rebalance = result["actual_total_delta"] != 0
+    rebalances = result[is_rebalance]
     size = rebalances["actual_total_delta"].abs()
     impact = rebalances["orderbook_effect"]
     positive = impact[impact > 0]
     negative = impact[impact < 0]
+    target_volume = result["target_total_delta"].abs().sum()
+    price_deviation = result["price_multiplier"] - 1
 
     summary = {
         "n_rebalances": len(rebalances),
+        "longest_rebalance_run": _longest_run(is_rebalance.to_numpy()),
         "avg_rebalance_size": size.mean(),
         "total_abs_rebalance_size": size.sum(),
+        "fill_ratio": size.sum() / target_volume if target_volume > 0 else np.nan,
         "avg_positive_impact": positive.mean(),
         "avg_negative_impact": negative.mean(),
         "avg_abs_impact": impact.abs().mean(),
         "max_positive_impact": positive.max(),
         "max_negative_impact": negative.min(),
+        "final_price_deviation": price_deviation.iloc[-1],
+        "max_price_deviation": price_deviation.max(),
+        "min_price_deviation": price_deviation.min(),
+        "min_depth_bid": result["depth_bid"].min(),
+        "min_depth_ask": result["depth_ask"].min(),
     }
-    for column in result.columns:
-        if column.startswith("nav_"):
-            summary[f"final_{column}"] = result[column].iloc[-1]
+    for product in vletps:
+        nav = result[f"nav_{product.name}"]
+        leverage_after = result[f"leverage_after_{product.name}"]
+        alive = nav > 0
+        # Relative tolerance: a rebalance to the boundary lands on it only up to rounding
+        outside_band = (leverage_after < product.leverage_lower_bound * (1 - 1e-9)) | (
+            leverage_after > product.leverage_upper_bound * (1 + 1e-9)
+        )
+        summary[f"final_nav_{product.name}"] = nav.iloc[-1]
+        summary[f"wipeout_time_{product.name}"] = pd.NaT if alive.all() else alive.idxmin()
+        summary[f"n_outside_band_{product.name}"] = int((alive & outside_band).sum())
 
     vol_raw = _realised_volatility(result["raw_price"])
     vol_simulated = _realised_volatility(result["simulated_price"])
