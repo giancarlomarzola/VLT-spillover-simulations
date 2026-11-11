@@ -25,7 +25,16 @@
             "source.organizeImports.ruff": "explicit"
         }
     },
-    "ruff.path": ["uv", "run", "ruff"],
+    "ruff.path": [
+        "uv",
+        "run",
+        "ruff"
+    ],
     "ruff.enable": true,
-    "ruff.lint.enable": true
+    "ruff.lint.enable": true,
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
 }
