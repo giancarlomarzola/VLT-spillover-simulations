@@ -14,6 +14,10 @@
         "PYTHONPATH": "${workspaceFolder}"
     },
     "jupyter.notebookFileRoot": "${workspaceFolder}",
+    "jupyter.runStartupCommands": [
+        "%load_ext autoreload",
+        "%autoreload 2"
+    ],
     "[python]": {
         "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.codeActionsOnSave": {
