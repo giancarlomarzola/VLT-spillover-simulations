@@ -18,7 +18,7 @@ from openpyxl.utils import get_column_letter
 from core.simulation import flag_feedback_loops
 from utils.paths import GBM_SIMULATIONS
 
-experiment = "simulation_from_gbm - nearest boundary UP and DOWN"  # folder written by simulation_from_gbm.py
+experiment = "nearest boundary UP and DOWN"  # folder in data/outputs/GBM_simulations/ written by simulation_from_gbm.py
 
 experiment_dir = GBM_SIMULATIONS / experiment
 results_dir = experiment_dir / "iterations"  # one parquet file per seed
@@ -34,14 +34,20 @@ loops = flag_feedback_loops(runs)
 print(f"{loops['feedback_loop'].sum():,} of {len(runs):,} runs hit a fatal feedback loop, left out of the averages")
 
 # A wipeout time only exists for the runs that wiped out, so its average is over those runs
-# only. The wipeout rate (share of iterations where NAV hit zero) is shown next to it.
+# only. Next to it:
+#   wipeout_rate_<product>: share of the runs without a feedback loop where NAV hit zero.
+#   fatality_rate_<product>: share of all runs where NAV hit zero, feedback loops included.
+#       This is the overall risk of the product; wipeout_rate_ shows the risk that is left
+#       once loops are set aside.
 columns = []
+fatality_columns = {}  # wipeout_rate_ column -> its fatality_rate_ column
 for column in runs.columns.drop(["seed", "price_series", "orderbook"]):
     columns.append(column)
     if column.startswith("wipeout_time_"):
         rate_column = column.replace("wipeout_time_", "wipeout_rate_")
         runs[rate_column] = runs[column].notna()
         columns.append(rate_column)
+        fatality_columns[rate_column] = column.replace("wipeout_time_", "fatality_rate_")
 
 # Average across seeds, over the runs without a feedback loop. Statistics that are NaN in a
 # run (e.g. no rebalances) are skipped. Remove entries from `columns` to drop them from the table.
@@ -49,18 +55,29 @@ keys = ["price_series", "orderbook"]
 grouped = runs.groupby(keys, sort=False)
 summary = runs[~loops["feedback_loop"]].groupby(keys, sort=False)[columns].mean()
 summary = summary.reindex(grouped.size().index)  # keep cells where every run was a loop, as blanks
+
+# Rates over all runs, loops included
+for rate_column, fatality_column in fatality_columns.items():
+    summary.insert(summary.columns.get_loc(rate_column) + 1, fatality_column, grouped[rate_column].mean())
+
+# Feedback loop counts per cell, split by direction (price run up / run down), and as a share of runs
+loop_counts = loops.groupby([runs[key] for key in keys], sort=False).sum()
 summary.insert(0, "n_iterations", grouped.size())
-summary.insert(1, "n_feedback_loops", loops["feedback_loop"].groupby([runs[key] for key in keys], sort=False).sum())
+summary.insert(1, "n_feedback_loops", loop_counts["feedback_loop"])
+summary.insert(2, "n_feedback_loops_up", loop_counts["feedback_loop_up"])
+summary.insert(3, "n_feedback_loops_down", loop_counts["feedback_loop_down"])
+summary.insert(4, "feedback_loop_rate", summary["n_feedback_loops"] / summary["n_iterations"])
 
 # Sizes, depths and NAVs in quote currency, price impacts and deviations in bps, vols in %
-formats = {column: "{:,.0f}" for column in summary.columns}  # counts (n_iterations, n_feedback_loops), sizes, NAVs
+RATE_PREFIXES = ("wipeout_rate_", "fatality_rate_", "feedback_loop_rate")  # shares of runs, shown in %
+formats = {column: "{:,.0f}" for column in summary.columns}  # counts (n_iterations, n_feedback_loops...), sizes, NAVs
 formats |= {
     column: (lambda x: f"{x * 1e4:.2f} bps")
     for column in summary.columns
     if column.endswith(("_impact", "_price_deviation"))
 }
 formats |= {column: (lambda x: str(x.round("s"))) for column in summary.columns if column.startswith("wipeout_time_")}
-formats |= {column: "{:.1%}" for column in summary.columns if column.startswith("wipeout_rate_")}
+formats |= {column: "{:.1%}" for column in summary.columns if column.startswith(RATE_PREFIXES)}
 formats |= {column: "{:,.1f}" for column in summary.columns if column.startswith(("n_rebalances", "n_outside_band_"))}
 formats |= {
     "longest_rebalance_run": "{:,.1f}",
@@ -86,7 +103,7 @@ def excel_number_format(column: str) -> str:
         return "0.000000"  # decimals, shown to 0.01 bps
     if column.startswith("wipeout_time_"):
         return "#,##0.00"  # days
-    if column.startswith("wipeout_rate_"):
+    if column.startswith(RATE_PREFIXES):
         return "0.0%"
     if column.startswith(("n_rebalances", "n_outside_band_")) or column == "longest_rebalance_run":
         return "#,##0.0"
