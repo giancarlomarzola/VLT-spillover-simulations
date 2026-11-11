@@ -76,37 +76,38 @@ def run_simulation(
     if len(prices) == 0:
         raise ValueError("prices must not be empty")
 
-    price = prices.to_numpy(dtype=float)
+    price_array = prices.to_numpy(dtype=float)
+    # The loop below is plain Python, where floats and lists are several times faster than
+    # numpy scalars and writes to single array cells. Arrays are only built at the end.
+    price = price_array.tolist()
     # Seconds since the previous price, used to replenish the orderbook (NaN at t = 0)
-    seconds_since_previous_step = prices.index.to_series().diff().dt.total_seconds().to_numpy()
+    seconds_since_previous_step = prices.index.to_series().diff().dt.total_seconds().tolist()
     for product in vletps:
         product.reset()
     if orderbook is not None:
         orderbook.reset()
 
-    columns = MARKET_COLUMNS + [f"{prefix}_{name}" for name in names for prefix in PRODUCT_VARS.values()]
-    col = {name: i for i, name in enumerate(columns)}
-    n = len(price)
-    out = np.zeros((n, len(columns)))
+    # One row per step: the market columns after the two price columns, and each product's state()
+    market_rows = []
+    product_rows = [[] for _ in vletps]
 
-    def record(t):
-        for product in vletps:
-            for key, value in product.state().items():
-                out[t, col[f"{PRODUCT_VARS[key]}_{product.name}"]] = value
-        out[t, col["depth_bid"]] = orderbook.depth_bid if orderbook is not None else np.nan
-        out[t, col["depth_ask"]] = orderbook.depth_ask if orderbook is not None else np.nan
+    def record(multiplier, slippage, target_total, actual_total):
+        if orderbook is not None:
+            market_rows.append(
+                (multiplier, slippage, target_total, actual_total, orderbook.depth_bid, orderbook.depth_ask)
+            )
+        else:
+            market_rows.append((multiplier, slippage, target_total, actual_total, np.nan, np.nan))
+        for product, rows in zip(vletps, product_rows):
+            rows.append(tuple(product.state().values()))
 
     # t = 0: initial state, no trading
-    out[0, col["raw_price"]] = price[0]
-    out[0, col["simulated_price"]] = price[0]
-    out[0, col["price_multiplier"]] = 1.0
-    record(0)
+    record(1.0, 0.0, 0.0, 0.0)
 
+    m_prev = 1.0  # m_{t-1}
     m_lag = 1.0  # m_{t-2}, needed for the eqn 5 lag
 
-    for t in range(1, n):
-        m_prev = out[t - 1, col["price_multiplier"]]  # m_{t-1}
-
+    for t in range(1, len(price)):
         # Return of the impacted price. Guard against zero/corrupted prices or multipliers
         if price[t - 1] == 0 or price[t] == 0 or m_lag == 0 or m_prev == 0:
             ret = 0.0
@@ -133,19 +134,26 @@ def run_simulation(
         # Clamp to keep the multiplier positive (a non-positive one would give NaN/inf next step)
         multiplier = max((1 + slippage) * m_prev, 1e-10)
 
-        out[t, col["raw_price"]] = price[t]
-        out[t, col["simulated_price"]] = price[t] * multiplier
-        out[t, col["price_multiplier"]] = multiplier
-        out[t, col["orderbook_effect"]] = slippage
-        out[t, col["target_total_delta"]] = target_total
-        out[t, col["actual_total_delta"]] = actual_total
-        record(t)  # depth recorded after this step's trade, before replenishment
+        record(multiplier, slippage, target_total, actual_total)  # depth after this step's trade, before replenishment
 
         m_lag = m_prev
+        m_prev = multiplier
 
-        if orderbook is not None:
+        # A full book has nothing to replenish, which is the case on most steps
+        if orderbook is not None and (
+            orderbook.depth_bid != orderbook.depth_bid_full or orderbook.depth_ask != orderbook.depth_ask_full
+        ):
             orderbook.replenish(seconds_since_previous_step[t])
 
+    market = np.array(market_rows, dtype=float)
+    # state() values, reordered to the PRODUCT_VARS column order
+    state_keys = list(vletps[0].state())
+    state_order = [state_keys.index(key) for key in PRODUCT_VARS]
+    out = np.column_stack(
+        [price_array, price_array * market[:, 0], market]
+        + [np.array(rows, dtype=float)[:, state_order] for rows in product_rows]
+    )
+    columns = MARKET_COLUMNS + [f"{prefix}_{name}" for name in names for prefix in PRODUCT_VARS.values()]
     return pd.DataFrame(out, columns=columns, index=prices.index)
 
 

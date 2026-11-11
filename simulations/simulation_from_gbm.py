@@ -1,12 +1,15 @@
+import itertools
 import json
+import os
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import pandas as pd
 import plotly.graph_objects as go
 
+from core.gbm_iterations import run_iteration, saved_seeds, simulate_seed  # noqa: F401 (interactive use)
 from core.orderbook import Orderbook
 from core.price_process import generate_gbm_price_series
-from core.simulation import run_simulation, summarise_run
 from core.variable_leverage_product import VLETP
 from utils.paths import RESULTS_DIR
 from utils.plotting import plot_leverage, plot_orderbook_depth, plot_prices  # noqa: F401 (interactive use)
@@ -114,128 +117,119 @@ start_price = 50_000
 mu = 0.0
 time_step = "5min"
 
-# Iterations: each one draws a new seed and runs every (volatility, orderbook) pair on it.
+# Iterations: each one takes a new seed and runs every (volatility, orderbook) pair on it.
 # Within an iteration every path shares the seed, so they differ only in volatility.
 # Results are saved one file per seed in data/outputs/results/<experiment>/, and running
-# this script again continues from the next unused seed, adding to what is already there.
+# this script again uses the next unused seeds, adding to what is already there.
 # simulation_from_gbm_table.py builds the table of averages from those files.
 experiment = "simulation_from_gbm"  # use a new name (or delete the folder) when the setup above changes
 n_iterations = 10
+n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
 
-results_dir = RESULTS_DIR / experiment
-results_dir.mkdir(parents=True, exist_ok=True)
-
-# Setup the saved results belong to. Runs with a different setup must not be averaged
-# together, so the folder is tied to the setup of the first run saved in it.
-config = {
-    "product": {
-        name: getattr(gbm_up, name)
-        for name in [
-            "name",
-            "start_nav",
-            "start_leverage",
-            "direction",
-            "leverage_lower_bound",
-            "leverage_upper_bound",
-            "leverage_target",
-        ]
-    },
-    "orderbooks": {
-        orderbook.name: {
-            name: getattr(orderbook, name)
-            for name in [
-                "depth_bid_full",
-                "depth_ask_full",
-                "width_bid",
-                "width_ask",
-                "spread_bid",
-                "spread_ask",
-                "k_bid",
-                "k_ask",
-                "resilience_bid",
-                "resilience_ask",
-            ]
-        }
-        for orderbook in orderbooks
-        if orderbook is not None
-    },
-    "price_process": {
-        "volatilities": volatilities,
-        "n_prices": n_prices,
-        "start_price": start_price,
-        "mu": mu,
-        "time_step": time_step,
-    },
+# Everything simulate_seed needs besides the seed
+setup = {
+    "vletps": gbm_up,
+    "orderbooks": orderbooks,
+    "volatilities": volatilities,
+    "n_prices": n_prices,
+    "start_price": start_price,
+    "mu": mu,
+    "time_step": time_step,
 }
-config = json.loads(json.dumps(config))  # normalise (tuples -> lists) so it compares equal to the saved copy
-config_path = results_dir / "config.json"
-if config_path.exists():
-    if json.loads(config_path.read_text()) != config:
-        raise ValueError(
-            f"The setup differs from the one already saved in {results_dir}. "
-            "Change `experiment` to start a new set of results, or delete that folder."
-        )
-else:
-    config_path.write_text(json.dumps(config, indent=2))
 
-existing_seeds = [int(path.stem.removeprefix("seed_")) for path in results_dir.glob("seed_*.parquet")]
-first_seed = max(existing_seeds) + 1 if existing_seeds else 0
+# The guard keeps the worker processes, which re-import this file, from starting runs of their own
+if __name__ == "__main__":
+    results_dir = RESULTS_DIR / experiment
+    results_dir.mkdir(parents=True, exist_ok=True)
 
-for seed in range(first_seed, first_seed + n_iterations):
-    started = time.perf_counter()
-    price_series = {
-        f"vol_{round(sigma * 100)}": generate_gbm_price_series(
-            n_prices=n_prices,
-            start_price=start_price,
-            mu=mu,
-            sigma=sigma,
-            time_step=time_step,
-            seed=seed,
-        )
-        for sigma in volatilities
+    # Setup the saved results belong to. Runs with a different setup must not be averaged
+    # together, so the folder is tied to the setup of the first run saved in it.
+    config = {
+        "product": {
+            name: getattr(gbm_up, name)
+            for name in [
+                "name",
+                "start_nav",
+                "start_leverage",
+                "direction",
+                "leverage_lower_bound",
+                "leverage_upper_bound",
+                "leverage_target",
+            ]
+        },
+        "orderbooks": {
+            orderbook.name: {
+                name: getattr(orderbook, name)
+                for name in [
+                    "depth_bid_full",
+                    "depth_ask_full",
+                    "width_bid",
+                    "width_ask",
+                    "spread_bid",
+                    "spread_ask",
+                    "k_bid",
+                    "k_ask",
+                    "resilience_bid",
+                    "resilience_ask",
+                ]
+            }
+            for orderbook in orderbooks
+            if orderbook is not None
+        },
+        "price_process": {
+            "volatilities": volatilities,
+            "n_prices": n_prices,
+            "start_price": start_price,
+            "mu": mu,
+            "time_step": time_step,
+        },
     }
-
-    # One row of headline outcomes per (price series, orderbook) run
-    summary_rows = []
-    results = {}  # full output of every run of the latest iteration, e.g. results["vol_60", "depth"]
-    for price_label, prices in price_series.items():
-        for orderbook in orderbooks:
-            orderbook_label = "no_orderbook" if orderbook is None else orderbook.name
-            result = run_simulation(gbm_up, orderbook, prices)
-            results[price_label, orderbook_label] = result
-            summary_rows.append(
-                {
-                    "seed": seed,
-                    "price_series": price_label,
-                    "orderbook": orderbook_label,
-                    **summarise_run(result, gbm_up),
-                }
+    config = json.loads(json.dumps(config))  # normalise (tuples -> lists) so it compares equal to the saved copy
+    config_path = results_dir / "config.json"
+    if config_path.exists():
+        if json.loads(config_path.read_text()) != config:
+            raise ValueError(
+                f"The setup differs from the one already saved in {results_dir}. "
+                "Change `experiment` to start a new set of results, or delete that folder."
             )
+    else:
+        config_path.write_text(json.dumps(config, indent=2))
 
-    iteration_summary = pd.DataFrame(summary_rows)
-    # All-NaT columns would otherwise be saved as datetimes rather than elapsed times
-    for column in iteration_summary.columns:
-        if column.startswith("wipeout_time_"):
-            iteration_summary[column] = pd.to_timedelta(iteration_summary[column].astype(object))
-    iteration_summary.to_parquet(results_dir / f"seed_{seed:06d}.parquet", index=False)
-    print(
-        f"Seed {seed} done in {time.perf_counter() - started:.0f}s "
-        f"({seed - first_seed + 1}/{n_iterations} this run, "
-        f"{len(existing_seeds) + seed - first_seed + 1} saved in total)"
+    # The lowest seeds not saved yet, so an interrupted run leaves no permanent gaps
+    existing_seeds = saved_seeds(results_dir)
+    seeds = list(itertools.islice((s for s in itertools.count() if s not in existing_seeds), n_iterations))
+
+    started = time.perf_counter()
+    pool = ProcessPoolExecutor(max_workers=min(n_workers, n_iterations))
+    try:
+        futures = [pool.submit(run_iteration, seed, results_dir, **setup) for seed in seeds]
+        for n_done, future in enumerate(as_completed(futures), start=1):
+            seed, seconds = future.result()
+            print(
+                f"Seed {seed} done in {seconds:.0f}s ({n_done}/{n_iterations} this run, "
+                f"{len(existing_seeds) + n_done} saved in total)"
+            )
+    finally:
+        pool.shutdown(cancel_futures=True)  # on an error or interrupt, do not start the remaining seeds
+    print(f"{n_iterations} iterations in {time.perf_counter() - started:.0f}s")
+
+    # Raw vol_60 path of the last seed of this run, as a check
+    vol = 0.6
+    plot_series = generate_gbm_price_series(
+        n_prices=n_prices, start_price=start_price, mu=mu, sigma=vol, time_step=time_step, seed=seeds[-1]
     )
+    fig = go.Figure(
+        go.Scatter(x=plot_series.index.total_seconds() / 86_400, y=plot_series, mode="lines", name="vol_60")
+    )
+    fig.update_layout(
+        title=f"GBM price path, {round(vol * 100)}% volatility, seed={seeds[-1]}",
+        xaxis_title="Time elapsed (days)",
+        yaxis_title="Price",
+        template="plotly_white",
+    )
+    fig.show()
 
-# Raw vol_60 path of the latest iteration, as a check
-vol = 0.6
-plot_series = price_series[f"vol_{round(100 * vol)}"]
-fig = go.Figure(go.Scatter(x=plot_series.index.total_seconds() / 86_400, y=plot_series, mode="lines", name="vol_60"))
-fig.update_layout(
-    title=f"GBM price path, {round(vol * 100)}% volatility, seed={seed}",
-    xaxis_title="Time elapsed (days)",
-    yaxis_title="Price",
-    template="plotly_white",
-)
-fig.show()
-
-# To use util plots for the latest iteration's results in interactive window:
-# plot_prices(results["vol_60", "depth"])
-# plot_leverage(results["vol_100", "depth"], gbm_up)
+    # To inspect one iteration in full, re-run it here (the seed makes it reproducible):
+    # summary, results = simulate_seed(seeds[-1], **setup, keep_results=True)
+    # plot_prices(results["vol_60", "depth"])
+    # plot_leverage(results["vol_100", "depth"], gbm_up)
