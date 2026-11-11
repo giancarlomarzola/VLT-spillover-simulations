@@ -23,16 +23,17 @@ gbm_up = VLETP( # in line with total for products on TSLA/NVDA etc
     start_leverage=2,
     leverage_lower_bound=1,
     leverage_upper_bound=3,
-    leverage_target=(1.5, 2.5), # None: nearest boundary; number: fixed target; (lower, upper): nearest of the two
+    leverage_target=None, # None: nearest boundary; number: fixed target; (lower, upper): nearest of the two
 )
 
+# currently not in model
 gbm_down  = VLETP( # in line with total for products on TSLA/NVDA etc
     name="GBM_DOWN",
     start_nav=100_000_000, 
     start_leverage=-2,
     leverage_lower_bound=-1,
     leverage_upper_bound=-3,
-    leverage_target=(-1.5, -2.5),
+    leverage_target=None,
 )
 
 # TSLA shares 400 each; 
@@ -122,7 +123,7 @@ time_step = "5min"
 # Results are saved one file per seed in data/outputs/<experiment>/iterations/, and running
 # this script again uses the next unused seeds, adding to what is already there.
 # simulation_from_gbm_table.py builds the table of averages from those files.
-experiment = "simulation_from_gbm"  # use a new name (or delete the folder) when the setup above changes
+experiment = "simulation_from_gbm - nearest boundary"  # use a new name (or delete the folder) when the setup above changes
 n_iterations = 1_000
 n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
 
