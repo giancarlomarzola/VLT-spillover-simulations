@@ -11,7 +11,7 @@ from core.gbm_iterations import run_iteration, saved_seeds, simulate_seed  # noq
 from core.orderbook import Orderbook
 from core.price_process import generate_gbm_price_series
 from core.variable_leverage_product import VLETP
-from utils.paths import RESULTS_DIR
+from utils.paths import DATA_OUTPUTS
 from utils.plotting import plot_leverage, plot_orderbook_depth, plot_prices  # noqa: F401 (interactive use)
 
 # IMPORTANT NOTE: SIMULATIONS ASSUME MARKETS RUNNING 24/7
@@ -119,7 +119,7 @@ time_step = "5min"
 
 # Iterations: each one takes a new seed and runs every (volatility, orderbook) pair on it.
 # Within an iteration every path shares the seed, so they differ only in volatility.
-# Results are saved one file per seed in data/outputs/results/<experiment>/, and running
+# Results are saved one file per seed in data/outputs/<experiment>/iterations/, and running
 # this script again uses the next unused seeds, adding to what is already there.
 # simulation_from_gbm_table.py builds the table of averages from those files.
 experiment = "simulation_from_gbm"  # use a new name (or delete the folder) when the setup above changes
@@ -139,7 +139,8 @@ setup = {
 
 # The guard keeps the worker processes, which re-import this file, from starting runs of their own
 if __name__ == "__main__":
-    results_dir = RESULTS_DIR / experiment
+    experiment_dir = DATA_OUTPUTS / experiment  # config.json and the summary table
+    results_dir = experiment_dir / "iterations"  # one parquet file per seed
     results_dir.mkdir(parents=True, exist_ok=True)
 
     # Setup the saved results belong to. Runs with a different setup must not be averaged
@@ -185,11 +186,11 @@ if __name__ == "__main__":
         },
     }
     config = json.loads(json.dumps(config))  # normalise (tuples -> lists) so it compares equal to the saved copy
-    config_path = results_dir / "config.json"
+    config_path = experiment_dir / "config.json"
     if config_path.exists():
         if json.loads(config_path.read_text()) != config:
             raise ValueError(
-                f"The setup differs from the one already saved in {results_dir}. "
+                f"The setup differs from the one already saved in {experiment_dir}. "
                 "Change `experiment` to start a new set of results, or delete that folder."
             )
     else:
