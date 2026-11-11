@@ -9,17 +9,28 @@ from core.variable_leverage_product import VLETP
 from utils.plotting import plot_leverage, plot_orderbook_depth, plot_prices  # noqa: F401 (interactive use)
 
 # Products
-gbm_up = VLETP(
+gbm_up = VLETP( # in line with total for products on TSLA/NVDA etc
     name="GBM_UP",
-    start_nav=10_000_000,
+    start_nav=3_000_000_000, 
     start_leverage=2,
-    leverage_lower_bound=1.25,
-    leverage_upper_bound=4,
+    leverage_lower_bound=1,
+    leverage_upper_bound=3,
+    leverage_target=None, # TODO: Add option to provide tuple for lower/upper target
+)
+
+gbm_down  = VLETP( # in line with total for products on TSLA/NVDA etc
+    name="GBM_DOWN",
+    start_nav=100_000_000, 
+    start_leverage=-2,
+    leverage_lower_bound=-1,
+    leverage_upper_bound=-3,
     leverage_target=None,
 )
 
+# TSLA shares 400 each; 
+
 # Orderbook
-baseline_depth = 50_000_000
+baseline_depth = 250_000_000
 baseline_width = 0.01
 baseline_spread = 0.005 / 100
 baseline_k = 0.3
@@ -46,7 +57,7 @@ depth_orderbook = Orderbook(
 width_orderbook = Orderbook(
     name="width",
     depth=baseline_depth,
-    width=0.5 * baseline_width,
+    width=2 * baseline_width,
     spread=baseline_spread,
     k=baseline_k,
     resilience=baseline_resilience,
