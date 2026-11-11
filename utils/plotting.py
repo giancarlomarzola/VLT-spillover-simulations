@@ -479,7 +479,7 @@ def plot_orderbooks(
         ax.plot(x[x >= 0], y[x >= 0], color=ask_col, lw=0.7)
 
         if baseline is not None and ob is not baseline:
-            ax.plot(x, _orderbook_depth_curve(x, baseline), color="0.5", lw=1.2, ls=":",
+            ax.plot(x, _orderbook_depth_curve(x, baseline), color="k", lw=1.2, ls=":",
                     label=f"{baseline.name} (reference)")
 
         parameters = (
