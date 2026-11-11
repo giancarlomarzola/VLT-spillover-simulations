@@ -418,6 +418,7 @@ def plot_orderbooks(
     x_limit=None,
     y_limit=None,
     show_legend=True,
+    baseline=None,
 ):
     """
     Plot what one or more orderbooks look like: cumulative bid and ask depth against the
@@ -440,6 +441,8 @@ def plot_orderbooks(
         y_limit: Range of the y axis, in USD. A number = from 0 to y_limit, a (min, max)
             tuple = that range. None = 1.2x the deepest orderbook.
         show_legend: Whether to show the bid/ask legend below the panels
+        baseline: An Orderbook to overlay on every panel as a dotted outline (no fill),
+            for reference. It is not drawn on its own panel. None = no overlay.
 
     Returns:
         The matplotlib Figure (show it with plt.show(), save it with fig.savefig(path))
@@ -475,6 +478,10 @@ def plot_orderbooks(
         ax.plot(x[x <= 0], y[x <= 0], color=bid_col, lw=0.7)
         ax.plot(x[x >= 0], y[x >= 0], color=ask_col, lw=0.7)
 
+        if baseline is not None and ob is not baseline:
+            ax.plot(x, _orderbook_depth_curve(x, baseline), color="0.5", lw=1.2, ls=":",
+                    label=f"{baseline.name} (reference)")
+
         parameters = (
             f"Depth=${_format_side(ob.depth_bid_full / 1e6, ob.depth_ask_full / 1e6)}M, "
             f"Width={_format_side(ob.width_bid * 100, ob.width_ask * 100)}%, "
@@ -496,6 +503,16 @@ def plot_orderbooks(
     if title:
         fig.suptitle(title, fontsize=14)
     if show_legend:
-        handles, labels = axes[0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc="outside lower center", ncol=2, fontsize=10)
+        # Collect across panels: the baseline's own panel has no reference line
+        legend_entries = {}
+        for ax in axes[: len(orderbooks)]:
+            for handle, label in zip(*ax.get_legend_handles_labels()):
+                legend_entries.setdefault(label, handle)
+        fig.legend(
+            legend_entries.values(),
+            legend_entries.keys(),
+            loc="outside lower center",
+            ncol=len(legend_entries),
+            fontsize=10,
+        )
     return fig

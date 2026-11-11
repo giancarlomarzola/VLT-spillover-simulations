@@ -35,9 +35,9 @@ orderbooks_list = [
         resilience=baseline_resilience,
     ),
     Orderbook(
-        name="Larger Width",
+        name="Smaller Width",
         depth=baseline_depth,
-        width=1.5 * baseline_width,
+        width=0.5 * baseline_width,
         spread=baseline_spread,
         k=baseline_k,
         resilience=baseline_resilience,
@@ -69,11 +69,14 @@ orderbooks_list = [
 ]
 
 
+baseline_orderbook = orderbooks_list[0]
+
 for orderbook in orderbooks_list:
     fig = plot_orderbooks(
-        orderbook, 
-        show_parameters=False, show_legend=False, 
-        x_limit=1.2, y_limit=60_000_000
+        orderbook,
+        show_parameters=False, show_legend=False,
+        x_limit=1.2, y_limit=60_000_000,
+        baseline=baseline_orderbook,  # dotted outline; skipped on the baseline's own plot
         )
 
     if save_plots:
