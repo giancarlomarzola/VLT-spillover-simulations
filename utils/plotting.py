@@ -408,7 +408,16 @@ def _grid_shape(n, rows, cols):
     return rows, cols
 
 
-def plot_orderbooks(orderbooks, rows=None, cols=None, title=None, figsize=None):
+def plot_orderbooks(
+    orderbooks,
+    rows=None,
+    cols=None,
+    show_parameters=True,
+    title=None,
+    figsize=None,
+    x_limit=None,
+    y_limit=None,
+):
     """
     Plot what one or more orderbooks look like: cumulative bid and ask depth against the
     price deviation from mid, one panel per orderbook.
@@ -421,8 +430,14 @@ def plot_orderbooks(orderbooks, rows=None, cols=None, title=None, figsize=None):
         rows: Number of rows in the grid of panels. None = derived from cols.
         cols: Number of columns in the grid of panels. None = derived from rows, or
             up to 2 columns if rows is not given either.
+        show_parameters: Whether to print each orderbook's parameters (depth, width,
+            spread and, if not 1, k) under its name. False = name only.
         title: Title above all panels (optional)
         figsize: Figure size (width, height) in inches. None = scaled to the grid.
+        x_limit: Range of the x axis, in % price deviation. A number = from -x_limit to
+            x_limit, a (min, max) tuple = that range. None = 1.2x the widest orderbook.
+        y_limit: Range of the y axis, in USD. A number = from 0 to y_limit, a (min, max)
+            tuple = that range. None = 1.2x the deepest orderbook.
 
     Returns:
         The matplotlib Figure (show it with plt.show(), save it with fig.savefig(path))
@@ -437,17 +452,26 @@ def plot_orderbooks(orderbooks, rows=None, cols=None, title=None, figsize=None):
     fig, axes = plt.subplots(rows, cols, figsize=figsize, squeeze=False, layout="constrained")
     axes = axes.flatten()
 
-    x_limit = 1.2 * 100 * max(max(ob.width_bid, ob.width_ask) for ob in orderbooks)
-    y_limit = 1.2 * max(max(ob.depth_bid_full, ob.depth_ask_full) for ob in orderbooks)
-    x = np.linspace(-x_limit, x_limit, 1000)
+    if x_limit is None:
+        x_limit = 1.2 * 100 * max(max(ob.width_bid, ob.width_ask) for ob in orderbooks)
+    if y_limit is None:
+        y_limit = 1.2 * max(max(ob.depth_bid_full, ob.depth_ask_full) for ob in orderbooks)
+    x_min, x_max = x_limit if isinstance(x_limit, (tuple, list)) else (-x_limit, x_limit)
+    y_min, y_max = y_limit if isinstance(y_limit, (tuple, list)) else (0, y_limit)
+    x = np.linspace(x_min, x_max, 1000)
 
     for ax, ob in zip(axes, orderbooks):
         y = _orderbook_depth_curve(x, ob)
 
-        ax.fill_between(x, y, where=(x < 0), color="green", alpha=0.3, label="Cumulative Bid")
-        ax.fill_between(x, y, where=(x > 0), color="red", alpha=0.3, label="Cumulative Ask")
-        ax.plot(x[x <= 0], y[x <= 0], color="green", lw=0.7)
-        ax.plot(x[x >= 0], y[x >= 0], color="red", lw=0.7)
+        bid_col = (153/255, 0, 0)
+        ask_col = (20/255, 45/255, 80/255)
+
+        ax.fill_between(x, y, where=(x <= 0), color=bid_col, alpha=0.8, 
+                        label="Cumulative Bid", interpolate=True)
+        ax.fill_between(x, y, where=(x >= 0), color=ask_col, alpha=0.8, 
+                        label="Cumulative Ask", interpolate=True)
+        ax.plot(x[x <= 0], y[x <= 0], color=bid_col, lw=0.7)
+        ax.plot(x[x >= 0], y[x >= 0], color=ask_col, lw=0.7)
 
         parameters = (
             f"Depth=${_format_side(ob.depth_bid_full / 1e6, ob.depth_ask_full / 1e6)}M, "
@@ -456,13 +480,13 @@ def plot_orderbooks(orderbooks, rows=None, cols=None, title=None, figsize=None):
         )
         if ob.k_bid != 1 or ob.k_ask != 1:
             parameters += f", k={_format_side(ob.k_bid, ob.k_ask)}"
-        ax.set_title(f"{ob.name}\n{parameters}", fontsize=10)
+        ax.set_title(f"{ob.name}\n{parameters}" if show_parameters else ob.name, fontsize=10)
         ax.set_xlabel("Price deviation (%)")
-        ax.set_xlim(-x_limit, x_limit)
-        ax.set_ylabel("Depth (USD)")
-        ax.set_ylim(0, y_limit)
-        ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:,.0f}"))
-        ax.grid(True, alpha=0.3)
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylabel("Depth (USD millions)")
+        ax.set_ylim(y_min, y_max)
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value / 1e6:,.10g}"))
+        #ax.grid(True, alpha=0.3)
 
     for ax in axes[len(orderbooks) :]:
         ax.axis("off")
