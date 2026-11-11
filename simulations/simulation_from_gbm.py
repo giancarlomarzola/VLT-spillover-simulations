@@ -11,7 +11,7 @@ from core.gbm_iterations import run_iteration, saved_seeds, simulate_seed  # noq
 from core.orderbook import Orderbook
 from core.price_process import generate_gbm_price_series
 from core.variable_leverage_product import VLETP
-from utils.paths import DATA_OUTPUTS
+from utils.paths import GBM_SIMULATIONS
 from utils.plotting import plot_leverage, plot_orderbook_depth, plot_prices  # noqa: F401 (interactive use)
 
 # IMPORTANT NOTE: SIMULATIONS ASSUME MARKETS RUNNING 24/7
@@ -119,7 +119,7 @@ time_step = "5min"
 
 # Iterations: each one takes a new seed and runs every (volatility, orderbook) pair on it.
 # Within an iteration every path shares the seed, so they differ only in volatility.
-# Results are saved one file per seed in data/outputs/<experiment>/iterations/, and running
+# Results are saved one file per seed in data/outputs/GBM_simulations/<experiment>/iterations/, and running
 # this script again uses the next unused seeds, adding to what is already there.
 # simulation_from_gbm_table.py builds the table of averages from those files.
 experiment = "simulation_from_gbm - nearest boundary UP and DOWN"  # use a new name/delete the folder when the setup above changes
@@ -139,7 +139,7 @@ setup = {
 
 # The guard keeps the worker processes, which re-import this file, from starting runs of their own
 if __name__ == "__main__":
-    experiment_dir = DATA_OUTPUTS / experiment  # config.json and the summary table
+    experiment_dir = GBM_SIMULATIONS / experiment  # config.json and the summary table
     results_dir = experiment_dir / "iterations"  # one parquet file per seed
     results_dir.mkdir(parents=True, exist_ok=True)
 

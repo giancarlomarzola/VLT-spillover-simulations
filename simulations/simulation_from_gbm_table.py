@@ -1,9 +1,13 @@
 """
 Table of averages for the runs saved by simulation_from_gbm.py.
 
-Reads every per-seed file in data/outputs/<experiment>/iterations/ and averages each
-(price series, orderbook) cell across seeds. It runs no simulations, so it can be re-run
-at any point to pick up newly saved iterations.
+Reads every per-seed file in data/outputs/GBM_simulations/<experiment>/iterations/ and
+averages each (price series, orderbook) cell across seeds. It runs no simulations, so it can
+be re-run at any point to pick up newly saved iterations.
+
+Runs that fell into a fatal feedback loop (see core.simulation.flag_feedback_loops) are
+counted in n_feedback_loops but left out of every average: their price and NAV values run
+off to the 1e-10 floor or to overflow, and would swamp the other runs.
 """
 
 import pandas as pd
@@ -11,11 +15,12 @@ from IPython.display import display
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from utils.paths import DATA_OUTPUTS
+from core.simulation import flag_feedback_loops
+from utils.paths import GBM_SIMULATIONS
 
 experiment = "simulation_from_gbm - nearest boundary UP and DOWN"  # folder written by simulation_from_gbm.py
 
-experiment_dir = DATA_OUTPUTS / experiment
+experiment_dir = GBM_SIMULATIONS / experiment
 results_dir = experiment_dir / "iterations"  # one parquet file per seed
 paths = sorted(results_dir.glob("seed_*.parquet"))
 if not paths:
@@ -24,6 +29,9 @@ if not paths:
 # One row per (seed, price series, orderbook) run
 runs = pd.concat([pd.read_parquet(path) for path in paths], ignore_index=True)
 print(f"{runs['seed'].nunique()} iterations, seeds {runs['seed'].min()} to {runs['seed'].max()}")
+
+loops = flag_feedback_loops(runs)
+print(f"{loops['feedback_loop'].sum():,} of {len(runs):,} runs hit a fatal feedback loop, left out of the averages")
 
 # A wipeout time only exists for the runs that wiped out, so its average is over those runs
 # only. The wipeout rate (share of iterations where NAV hit zero) is shown next to it.
@@ -35,14 +43,17 @@ for column in runs.columns.drop(["seed", "price_series", "orderbook"]):
         runs[rate_column] = runs[column].notna()
         columns.append(rate_column)
 
-# Average across seeds. Statistics that are NaN in a run (e.g. no rebalances) are skipped.
-# Remove entries from `columns` to drop them from the table.
-grouped = runs.groupby(["price_series", "orderbook"], sort=False)
-summary = grouped[columns].mean()
+# Average across seeds, over the runs without a feedback loop. Statistics that are NaN in a
+# run (e.g. no rebalances) are skipped. Remove entries from `columns` to drop them from the table.
+keys = ["price_series", "orderbook"]
+grouped = runs.groupby(keys, sort=False)
+summary = runs[~loops["feedback_loop"]].groupby(keys, sort=False)[columns].mean()
+summary = summary.reindex(grouped.size().index)  # keep cells where every run was a loop, as blanks
 summary.insert(0, "n_iterations", grouped.size())
+summary.insert(1, "n_feedback_loops", loops["feedback_loop"].groupby([runs[key] for key in keys], sort=False).sum())
 
 # Sizes, depths and NAVs in quote currency, price impacts and deviations in bps, vols in %
-formats = {column: "{:,.0f}" for column in summary.columns}
+formats = {column: "{:,.0f}" for column in summary.columns}  # counts (n_iterations, n_feedback_loops), sizes, NAVs
 formats |= {
     column: (lambda x: f"{x * 1e4:.2f} bps")
     for column in summary.columns
