@@ -21,17 +21,16 @@ gbm_up = VLETP( # in line with total for products on TSLA/NVDA etc
     name="GBM_UP",
     start_nav=3_000_000_000, 
     start_leverage=2,
-    leverage_lower_bound=1,
+    leverage_lower_bound=1.25,
     leverage_upper_bound=3,
     leverage_target=None, # None: nearest boundary; number: fixed target; (lower, upper): nearest of the two
 )
 
-# currently not in model
 gbm_down  = VLETP( # in line with total for products on TSLA/NVDA etc
     name="GBM_DOWN",
     start_nav=100_000_000, 
     start_leverage=-2,
-    leverage_lower_bound=-1,
+    leverage_lower_bound=-1.25,
     leverage_upper_bound=-3,
     leverage_target=None,
 )
@@ -123,13 +122,13 @@ time_step = "5min"
 # Results are saved one file per seed in data/outputs/<experiment>/iterations/, and running
 # this script again uses the next unused seeds, adding to what is already there.
 # simulation_from_gbm_table.py builds the table of averages from those files.
-experiment = "simulation_from_gbm - nearest boundary"  # use a new name/delete the folder when the setup above changes
+experiment = "simulation_from_gbm - nearest boundary UP and DOWN"  # use a new name/delete the folder when the setup above changes
 n_iterations = 1_000
 n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
 
 # Everything simulate_seed needs besides the seed
 setup = {
-    "vletps": gbm_up,
+    "vletps": [gbm_up, gbm_down],
     "orderbooks": orderbooks,
     "volatilities": volatilities,
     "n_prices": n_prices,
@@ -147,17 +146,19 @@ if __name__ == "__main__":
     # Setup the saved results belong to. Runs with a different setup must not be averaged
     # together, so the folder is tied to the setup of the first run saved in it.
     config = {
-        "product": {
-            name: getattr(gbm_up, name)
-            for name in [
-                "name",
-                "start_nav",
-                "start_leverage",
-                "direction",
-                "leverage_lower_bound",
-                "leverage_upper_bound",
-                "leverage_target",
-            ]
+        "products": {
+            product.name: {
+                name: getattr(product, name)
+                for name in [
+                    "start_nav",
+                    "start_leverage",
+                    "direction",
+                    "leverage_lower_bound",
+                    "leverage_upper_bound",
+                    "leverage_target",
+                ]
+            }
+            for product in ([setup["vletps"]] if isinstance(setup["vletps"], VLETP) else setup["vletps"])
         },
         "orderbooks": {
             orderbook.name: {

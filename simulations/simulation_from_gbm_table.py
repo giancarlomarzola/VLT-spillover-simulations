@@ -13,7 +13,7 @@ from openpyxl.utils import get_column_letter
 
 from utils.paths import DATA_OUTPUTS
 
-experiment = "simulation_from_gbm - nearest boundary"  # folder written by simulation_from_gbm.py
+experiment = "simulation_from_gbm - nearest boundary UP and DOWN"  # folder written by simulation_from_gbm.py
 
 experiment_dir = DATA_OUTPUTS / experiment
 results_dir = experiment_dir / "iterations"  # one parquet file per seed
