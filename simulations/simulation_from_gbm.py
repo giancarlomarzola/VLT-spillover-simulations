@@ -54,7 +54,7 @@ baseline_orderbook = Orderbook(
 )
 
 depth_orderbook = Orderbook(
-    name="depth",
+    name="depth 0.5x",
     depth=0.5 * baseline_depth,
     width=baseline_width,
     spread=baseline_spread,
@@ -63,7 +63,7 @@ depth_orderbook = Orderbook(
 )
 
 width_orderbook = Orderbook(
-    name="width",
+    name="width 2x",
     depth=baseline_depth,
     width=2 * baseline_width,
     spread=baseline_spread,
@@ -72,7 +72,7 @@ width_orderbook = Orderbook(
 )
 
 spread_orderbook = Orderbook(
-    name="spread",
+    name="spread 2x",
     depth=baseline_depth,
     width=baseline_width,
     spread=2 * baseline_spread,
@@ -81,7 +81,7 @@ spread_orderbook = Orderbook(
 )
 
 shape_orderbook = Orderbook(
-    name="shape",
+    name="shape k3",
     depth=baseline_depth,
     width=baseline_width,
     spread=baseline_spread,
@@ -90,7 +90,7 @@ shape_orderbook = Orderbook(
 )
 
 resilience_orderbook = Orderbook(
-    name="resilience",
+    name="resilience 12h",
     depth=baseline_depth,
     width=baseline_width,
     spread=baseline_spread,
