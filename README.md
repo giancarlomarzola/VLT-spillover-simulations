@@ -7,7 +7,7 @@ Simulates price spillover effects from Variable Leverage Token (VLT) rebalancing
 - **`core/orderbook.py`** — `Orderbook`: a synthetic bid/ask book defined by depth, spread, width, curvature (`k`), and resilience. Converts a trade size into slippage and tracks depth depletion/replenishment over time.
 - **`core/price_spillover_simulations.py`** — `run_simulation`: steps a pair of UP/DOWN leverage tokens through a price series, computing rebalance trades, running them through the orderbook, and feeding the resulting slippage back into the simulated price for the next step.
 - **`utils/data_io.py`** — loads raw Binance trade/rebalance data and resamples it into the frequencies used by the simulations.
-- **`utils/plotting.py`**, **`utils/orderbook_plots.py`** — shared Plotly chart helpers for price, leverage, and orderbook depth.
+- **`utils/plotting.py`** — default plot functions: Plotly charts of simulation results (price, leverage, orderbook depth over time) and a matplotlib plot of orderbook shapes (`plot_orderbooks`). **`utils/legacy_plotting.py`** holds the older Plotly helpers used by the dashboard and test bench.
 
 ## Setup
 

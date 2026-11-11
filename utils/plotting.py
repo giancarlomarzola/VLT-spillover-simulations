@@ -1,9 +1,24 @@
-"""Shared plotting utilities for simulation results."""
+"""Default plot functions.
 
+Simulation results (plot_prices, plot_leverage, plot_orderbook_depth): interactive Plotly
+figures of the output of core.simulation.run_simulation, with time on the x-axis. Results
+are DataFrames indexed by time: a DatetimeIndex (historical data) is plotted as dates, a
+TimedeltaIndex (e.g. a GBM path) as time elapsed since the start of the simulation. Each
+function takes either a single results DataFrame or a dict of {label: DataFrame} to compare
+several runs (e.g. different orderbooks) on the same price path.
+
+Orderbooks (plot_orderbooks): static matplotlib figure of what one or more orderbooks look
+like (cumulative depth against price deviation).
+"""
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from matplotlib.ticker import FuncFormatter
 from plotly.subplots import make_subplots
+
+from core.orderbook import Orderbook
 
 TRACE_COLORS = [
     "#636EFA",
@@ -18,549 +33,442 @@ TRACE_COLORS = [
     "#FECB52",
 ]
 
+_LEGEND = {
+    "bgcolor": "rgba(255, 255, 255, 0.9)",
+    "bordercolor": "black",
+    "borderwidth": 1,
+    "font": {"color": "black", "size": 12},
+}
+_AXIS = {
+    "showgrid": True,
+    "gridwidth": 1,
+    "gridcolor": "lightgray",
+    "title_font_color": "black",
+    "tickfont_color": "black",
+}
+# (unit name, seconds per unit), largest first
+_ELAPSED_UNITS = [("days", 86_400), ("hours", 3_600), ("minutes", 60), ("seconds", 1)]
 
-def resample_data(data, resample_freq):
-    """Resample time-series data by taking the last value in each period.
 
-    Args:
-        data: DataFrame with 'timestamp' column
-        resample_freq: string (e.g., '15s', '1min') or 'raw' for no resampling
+def _as_dict(results):
+    return {"Simulated": results} if isinstance(results, pd.DataFrame) else results
 
-    Returns:
-        Resampled DataFrame
+
+def _time_axis(index, unit_from=None):
     """
-    if resample_freq == "raw":
-        return data.copy()
+    Turn a results index into (x values, x-axis title, hover format for x).
 
-    df = data.copy()
-    df.set_index("timestamp", inplace=True)
-    resampled = df.resample(resample_freq).last()
-    resampled.reset_index(inplace=True)
-    return resampled
-
-
-def plot_results(
-    results_dict,
-    market_price=None,
-    x_axis=None,
-    lambda_upper=4.0,
-    lambda_lower=1.25,
-    show_hover=True,
-    show_markers=False,
-    leverage_timing="Before Rebalance",
-    title_prefix="",
-    rebalance_magnitudes=None,
-    currency="",
-    resample_freq=None,
-):
-    """Plot prices and leverage from simulation results.
-
-    Args:
-        results_dict: Dict of result dataframes
-        market_price: Array of actual market prices (if None, uses raw_price from first dataframe)
-        x_axis: X-axis values (if None, uses list of indices). Should be timestamps if resampling.
-        lambda_upper: Upper leverage boundary for visualization
-        lambda_lower: Lower leverage boundary for visualization
-        show_hover: Whether to show hover info
-        show_markers: Whether to show markers on price lines
-        leverage_timing: "Before Rebalance" or "After Rebalance"
-        title_prefix: Prefix for plot titles (e.g., "BTC 30s")
-        rebalance_magnitudes: Dict with rebalance magnitudes for each orderbook (optional)
-        currency: Currency symbol for axis labels (default '')
-        resample_freq: Resample frequency (e.g., '30s', '1min', '15min'). None = no resampling.
-
-    Returns:
-        Tuple of (price_fig, leverage_fig)
+    Elapsed time is plotted as a plain number in the largest unit that keeps the run at
+    least 5 units long (e.g. a 3 hour run is shown in minutes), since Plotly cannot draw
+    timedeltas directly. Pass unit_from (another index) to pick the unit from that index's
+    length instead, so that two traces share the same unit.
     """
-    # Extract timestamps from first result if available
-    first_df = next(iter(results_dict.values()))
-    if "timestamp" in first_df.columns:
-        result_timestamps = first_df["timestamp"].values
-        if x_axis is None:
-            x_axis = result_timestamps
+    if not isinstance(index, pd.TimedeltaIndex):
+        return index, "Time", "%{x|%Y-%m-%d %H:%M:%S}"
 
-    # Determine which price to use as baseline (before resampling)
-    if market_price is None:
-        if "raw_price" in first_df.columns:
-            market_price = first_df["raw_price"].values
-        else:
-            raise ValueError("market_price must be provided or 'raw_price' must be in dataframes")
+    reference = (index if unit_from is None else unit_from).total_seconds()
+    span = reference[-1] - reference[0] if len(reference) else 0.0
+    unit, size = next(((u, s) for u, s in _ELAPSED_UNITS if span >= 5 * s), _ELAPSED_UNITS[-1])
+    return index.total_seconds().to_numpy() / size, f"Time elapsed ({unit})", f"%{{x:,.2f}} {unit}"
 
-    # Resample data if requested
-    if resample_freq and resample_freq != "raw" and x_axis is not None and len(x_axis) > 0:
-        temp_df = pd.DataFrame({"timestamp": x_axis, "market_price": market_price})
-        temp_df["timestamp"] = pd.to_datetime(temp_df["timestamp"], utc=True)
-        temp_df.set_index("timestamp", inplace=True)
-        resampled = temp_df.resample(resample_freq).last()
-        resampled_x_axis = resampled.index.values
-        market_price = resampled["market_price"].values
 
-        # Resample each result dataframe using its own timestamps
-        resampled_results_dict = {}
-        for name, df in results_dict.items():
-            df_temp = df.copy()
-            if "timestamp" in df_temp.columns:
-                # Use timestamps already in the dataframe
-                df_temp["timestamp"] = pd.to_datetime(df_temp["timestamp"], utc=True)
-                df_temp.set_index("timestamp", inplace=True)
-            else:
-                # Fall back to x_axis if no timestamps in df
-                df_temp["timestamp"] = pd.to_datetime(x_axis, utc=True)
-                df_temp.set_index("timestamp", inplace=True)
-            df_resampled = df_temp.resample(resample_freq).last()
-            resampled_results_dict[name] = df_resampled.reset_index(drop=True)
+def _resample(df, resample_freq):
+    """Keep the last value in each period (e.g. '30s'). None or 'raw' leaves the data as is."""
+    if not resample_freq or resample_freq == "raw":
+        return df
+    return df.resample(resample_freq).last().dropna(how="all")
 
-        results_dict = resampled_results_dict
-        x_axis = resampled_x_axis
-    # Get data dimensions
-    first_df = next(iter(results_dict.values()))
-    if x_axis is None:
-        x_axis = list(range(len(first_df)))
 
-    # Calculate rebalance magnitudes if not provided
-    if not rebalance_magnitudes:
-        rebalance_magnitudes = {}
-        for name, df in results_dict.items():
-            if "actual_total_delta" in df.columns:
-                rebalance_magnitudes[name] = df["actual_total_delta"].abs().values
-            elif "actual_delta_up" in df.columns and "actual_delta_down" in df.columns:
-                rebalance_magnitudes[name] = (df["actual_delta_up"].abs() + df["actual_delta_down"].abs()).values
-            else:
-                rebalance_magnitudes[name] = None
+def _hover(show_hover, template):
+    return {"hovertemplate": template} if show_hover else {"hoverinfo": "skip"}
 
-    # Create price plot
-    price_fig = go.Figure()
 
-    # Plot simulated prices for all results first (so market price is on top)
-    for idx, (name, df) in enumerate(results_dict.items()):
-        color = TRACE_COLORS[idx % len(TRACE_COLORS)]
+def _layout(fig, title, title_prefix, height):
+    fig.update_layout(
+        title=f"{title_prefix} {title}" if title_prefix else title,
+        title_x=0.5,
+        title_xanchor="center",
+        title_font_size=28,
+        title_font_color="black",
+        hovermode="closest",
+        template="plotly_white",
+        height=height,
+        font={"size": 12, "color": "black"},
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        margin={"l": 80, "r": 120, "t": 100, "b": 80},
+    )
+    fig.update_xaxes(**_AXIS)
+    fig.update_yaxes(**_AXIS)
 
-        if "simulated_price" in df.columns:
-            y_data = df["simulated_price"].values
-        elif "price_multiplier" in df.columns:
-            y_data = market_price * df["price_multiplier"].values
-        else:
-            raise ValueError("Dataframe must contain 'simulated_price' or 'price_multiplier' column")
 
-        trace_mode = "lines+markers" if show_markers else "lines"
-        price_fig.add_trace(
-            go.Scatter(
-                x=x_axis,
-                y=y_data,
-                mode=trace_mode,
-                name=name,
-                line={"color": color, "width": 2},
-                marker=({"size": 6, "line": {"width": 1, "color": "white"}} if show_markers else None),
-                hovertemplate=(
-                    f"<b>{name}</b><br>Time: %{{x|%H:%M:%S}}<br>Price: $%{{y:.2f}}<extra></extra>"
-                    if show_hover
-                    else None
-                ),
-                hoverinfo="skip" if not show_hover else None,
-            )
-        )
+def _rebalance_trace(delta, resample_freq, unit_from, name, color, show_hover, x_hover):
+    """
+    Stem trace of rebalance sizes (absolute trade size per step, summed per period when
+    resampling) on the secondary axis, hidden until clicked in the legend.
 
-        # Add rebalance events if available
-        if name in rebalance_magnitudes and rebalance_magnitudes[name] is not None:
-            rebalance_x, rebalance_y = [], []
-            for xi, magnitude in zip(x_axis, rebalance_magnitudes[name]):
-                if magnitude > 0 and not np.isnan(magnitude):
-                    rebalance_x += [xi, xi, None]
-                    rebalance_y += [0, magnitude, None]
+    delta: Series of signed rebalance trades. unit_from: index of the main trace, so both
+    share the same time unit. Returns None if there are no rebalances.
+    """
+    size = delta.abs()
+    if resample_freq and resample_freq != "raw":
+        size = size.resample(resample_freq).sum()
+    size = size[size > 0]
+    if not len(size):
+        return None
 
-            if rebalance_x:
-                price_fig.add_trace(
-                    go.Scatter(
-                        x=rebalance_x,
-                        y=rebalance_y,
-                        mode="lines",
-                        name=f"{name} rebalances",
-                        line={"color": color, "width": 2},
-                        yaxis="y2",
-                        legend="legend2",
-                        visible="legendonly",
-                        hovertemplate=(
-                            f"<b>{name} rebalance</b><br>Time: %{{x|%H:%M:%S}}<br>Size: $%{{y:,.0f}}<extra></extra>"
-                            if show_hover
-                            else None
-                        ),
-                        hoverinfo="skip" if not show_hover else None,
-                    )
-                )
-
-    # Plot market price last (so it's on top)
-    price_fig.add_trace(
-        go.Scatter(
-            x=x_axis,
-            y=market_price,
-            mode="lines",
-            name="Actual Market Price",
-            line={"color": "black", "width": 2},
-            hovertemplate=(
-                "<b>Actual Market Price</b><br>Time: %{x|%H:%M:%S}<br>Price: $%{y:.2f}<extra></extra>"
-                if show_hover
-                else None
-            ),
-            hoverinfo="skip" if not show_hover else None,
-        )
+    rx, _, _ = _time_axis(size.index, unit_from=unit_from)
+    stem_x, stem_y = [], []
+    for xi, yi in zip(rx, size.to_numpy()):
+        stem_x += [xi, xi, None]
+        stem_y += [0, yi, None]
+    return go.Scatter(
+        x=stem_x,
+        y=stem_y,
+        mode="lines",
+        name=f"{name} rebalances",
+        line={"color": color, "width": 2},
+        yaxis="y2",
+        legend="legend2",
+        visible="legendonly",
+        **_hover(show_hover, f"<b>{name} rebalance</b><br>Time: {x_hover}<br>Size: $%{{y:,.0f}}<extra></extra>"),
     )
 
-    # Setup layout
-    yaxis_title = f"{currency} Price (USDT)" if currency else "Price (USDT)"
-    layout_dict = {
-        "title": (f"{title_prefix} Price Simulations Comparison" if title_prefix else "Price Simulations Comparison"),
-        "title_x": 0.5,
-        "title_xanchor": "center",
-        "title_font_size": 28,
-        "xaxis_title": "Timestamp",
-        "yaxis_title": yaxis_title,
-        "hovermode": "closest",
-        "template": "plotly_white",
-        "height": 800,
-        "font": {"size": 12, "color": "black"},
-        "paper_bgcolor": "white",
-        "plot_bgcolor": "white",
-        "title_font_color": "black",
-        "margin": {"l": 80, "r": 120, "t": 100, "b": 80},
-    }
 
-    # Add secondary y-axis if rebalance_magnitudes have data
-    has_rebalance_data = (
-        any(mag is not None for mag in rebalance_magnitudes.values()) if rebalance_magnitudes else False
-    )
-    if has_rebalance_data:
-        layout_dict["yaxis2"] = {
-            "title": "Rebalance Size (USDT)",
+def _rebalance_layout(fig, side):
+    """Add the secondary axis and the legend (bottom 'left' or 'right') for rebalance traces."""
+    fig.update_layout(
+        # Always show the main legend, even with a single main trace: when Plotly hides it,
+        # clicks on the rebalance legend do nothing in plotly.js 2.x (bundled by VS Code)
+        showlegend=True,
+        yaxis2={
+            **_AXIS,
+            "title": "Rebalance Size",
             "overlaying": "y",
             "side": "right",
             "rangemode": "tozero",
             "showgrid": False,
             "zeroline": False,
-            "title_font_color": "black",
-            "tickfont_color": "black",
-        }
-        layout_dict["legend"] = {
-            "title": "Price",
-            "x": 0.02,
-            "y": 0.02,
-            "bgcolor": "rgba(255, 255, 255, 0.9)",
-            "bordercolor": "black",
-            "borderwidth": 1,
-            "xanchor": "left",
-            "yanchor": "bottom",
-            "font": {"color": "black", "size": 12},
-        }
-        layout_dict["legend2"] = {
-            "title": "Rebalances",
-            "x": 0.98,
-            "y": 0.02,
-            "bgcolor": "rgba(255, 255, 255, 0.9)",
-            "bordercolor": "black",
-            "borderwidth": 1,
-            "xanchor": "right",
-            "yanchor": "bottom",
-            "font": {"color": "black", "size": 12},
-        }
-        layout_dict["margin"] = {"l": 80, "r": 120, "t": 100, "b": 80}
-    else:
-        layout_dict["legend"] = {
-            "x": 0.02,
-            "y": 0.02,
-            "bgcolor": "rgba(255, 255, 255, 0.9)",
-            "bordercolor": "black",
-            "borderwidth": 1,
-            "xanchor": "left",
-            "yanchor": "bottom",
-            "font": {"color": "black", "size": 12},
-        }
-
-    price_fig.update_layout(**layout_dict)
-    price_fig.update_xaxes(
-        showgrid=True,
-        gridwidth=1,
-        gridcolor="lightgray",
-        title_font_color="black",
-        tickfont_color="black",
-    )
-    # Set y-axis to start from 0 and go to 1.2x max price
-    max_price = market_price.max() if hasattr(market_price, "max") else max(market_price)
-    price_fig.update_yaxes(
-        showgrid=True,
-        gridwidth=1,
-        gridcolor="lightgray",
-        title_font_color="black",
-        tickfont_color="black",
-        range=[0, 1.2 * max_price],
-        selector={"overlaying": None},
-    )
-
-    # Create leverage plot
-    leverage_fig = go.Figure()
-
-    # Determine which columns to use based on leverage_timing
-    lev_prefix = "lambdast" if leverage_timing == "After Rebalance" else "lambda"
-    up_col = f"{lev_prefix}_up"
-    down_col = f"{lev_prefix}_down"
-
-    for idx, (name, df) in enumerate(results_dict.items()):
-        color = TRACE_COLORS[idx % len(TRACE_COLORS)]
-
-        # Plot UP leverage
-        if up_col in df.columns:
-            leverage_fig.add_trace(
-                go.Scatter(
-                    x=x_axis,
-                    y=df[up_col].values,
-                    mode="lines",
-                    name=name,
-                    legendgroup=name,
-                    line={"color": color, "width": 2},
-                    hovertemplate=(
-                        f"<b>{name} UP</b><br>Time: %{{x|%H:%M:%S}}<br>Leverage: %{{y:.3f}}<extra></extra>"
-                        if show_hover
-                        else None
-                    ),
-                    hoverinfo="skip" if not show_hover else None,
-                )
-            )
-
-        # Plot DOWN leverage (negated for display)
-        if down_col in df.columns:
-            leverage_fig.add_trace(
-                go.Scatter(
-                    x=x_axis,
-                    y=-df[down_col].values,
-                    mode="lines",
-                    name=name,
-                    legendgroup=name,
-                    showlegend=False,
-                    line={"color": color, "width": 2},
-                    customdata=df[down_col].values,
-                    hovertemplate=(
-                        f"<b>{name} DOWN</b><br>Time: %{{x|%H:%M:%S}}<br>Leverage: %{{customdata:.3f}}<extra></extra>"
-                        if show_hover
-                        else None
-                    ),
-                    hoverinfo="skip" if not show_hover else None,
-                )
-            )
-
-    leverage_fig.update_layout(
-        title=(f"{title_prefix} Leverage {leverage_timing}" if title_prefix else f"Leverage {leverage_timing}"),
-        title_x=0.5,
-        title_xanchor="center",
-        title_font_size=28,
-        xaxis_title="Timestamp",
-        yaxis_title="Leverage (λ)",
-        hovermode="closest",
-        template="plotly_white",
-        height=600,
-        font={"size": 12, "color": "black"},
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-        legend={
-            "x": 0.98,
-            "y": 0.02,
-            "bgcolor": "rgba(255, 255, 255, 0.9)",
-            "bordercolor": "black",
-            "borderwidth": 1,
-            "xanchor": "right",
-            "yanchor": "bottom",
-            "font": {"color": "black", "size": 12},
-            "tracegroupgap": 0,
         },
-        margin={"l": 80, "r": 120, "t": 100, "b": 80},
-    )
-    leverage_fig.update_xaxes(
-        showgrid=True,
-        gridwidth=1,
-        gridcolor="lightgray",
-        title_font_color="black",
-        tickfont_color="black",
-    )
-    leverage_fig.update_yaxes(
-        showgrid=True,
-        gridwidth=1,
-        gridcolor="lightgray",
-        title_font_color="black",
-        tickfont_color="black",
-        zeroline=True,
-        zerolinecolor="gray",
-        zerolinewidth=1,
+        legend2={
+            **_LEGEND,
+            "title": "Rebalances",
+            "x": 0.98 if side == "right" else 0.02,
+            "y": 0.02,
+            "xanchor": side,
+            "yanchor": "bottom",
+        },
     )
 
-    # Add lambda boundary lines
-    for threshold, label in [(lambda_upper, "λ_upper"), (lambda_lower, "λ_lower")]:
-        for sign in (1, -1):
-            leverage_fig.add_hline(
-                y=sign * threshold,
-                line={"color": "gray", "width": 1, "dash": "dot"},
-                annotation_text=f"{label} = {sign * threshold:g}",
-                annotation_position="top left",
-                annotation_font_color="gray",
-                annotation_font_size=11,
-            )
 
-    return price_fig, leverage_fig
+def plot_prices(results, resample_freq=None, show_hover=True, title_prefix=""):
+    """
+    Plot the raw price path (no VLETP impact) against the simulated price of each run.
 
-
-def plot_orderbook_depth(
-    results_dict,
-    x_axis=None,
-    show_hover=True,
-    title_prefix="",
-    resample_freq=None,
-):
-    """Plot bid and ask depth over time from simulation results in two subplots.
+    The size of each run's net rebalance trades is available on a secondary axis; those
+    traces are hidden until clicked in the legend.
 
     Args:
-        results_dict: Dict of result dataframes (must contain 'depth_bid' and 'depth_ask' columns)
-        x_axis: X-axis values (if None, uses list of indices). Should be timestamps.
+        results: Results DataFrame, or dict of {label: DataFrame}
+        resample_freq: Resample frequency (e.g. '30s', '1min'). None = no resampling.
+            Prices take the last value in each period, rebalance sizes are summed.
         show_hover: Whether to show hover info
-        title_prefix: Prefix for plot title (e.g., "BTC 30s")
-        resample_freq: Resample frequency (e.g., '30s', '1min', '15min'). None = no resampling.
-
-    Returns:
-        Plotly figure object
+        title_prefix: Prefix for the plot title (e.g. "GBM")
     """
-    first_df = next(iter(results_dict.values()))
-    if "timestamp" in first_df.columns:
-        result_timestamps = first_df["timestamp"].values
-        if x_axis is None:
-            x_axis = result_timestamps
+    results = _as_dict(results)
+    fig = go.Figure()
+    has_rebalances = False
 
-    # Resample data if requested
-    if resample_freq and resample_freq != "raw" and x_axis is not None and len(x_axis) > 0:
-        resampled_results_dict = {}
-        for name, df in results_dict.items():
-            df_temp = df.copy()
-            if "timestamp" in df_temp.columns:
-                df_temp["timestamp"] = pd.to_datetime(df_temp["timestamp"], utc=True)
-                df_temp.set_index("timestamp", inplace=True)
-            else:
-                df_temp["timestamp"] = pd.to_datetime(x_axis, utc=True)
-                df_temp.set_index("timestamp", inplace=True)
-            df_resampled = df_temp.resample(resample_freq).last()
-            resampled_results_dict[name] = df_resampled.reset_index(drop=True)
+    for idx, (name, df) in enumerate(results.items()):
+        color = TRACE_COLORS[idx % len(TRACE_COLORS)]
+        resampled = _resample(df, resample_freq)
+        x, x_title, x_hover = _time_axis(resampled.index)
 
-        results_dict = resampled_results_dict
-        temp_df = pd.DataFrame({"timestamp": x_axis})
-        temp_df["timestamp"] = pd.to_datetime(temp_df["timestamp"], utc=True)
-        temp_df.set_index("timestamp", inplace=True)
-        resampled = temp_df.resample(resample_freq).last()
-        x_axis = resampled.index.values
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=resampled["simulated_price"],
+                mode="lines",
+                name=name,
+                line={"color": color, "width": 2},
+                **_hover(show_hover, f"<b>{name}</b><br>Time: {x_hover}<br>Price: $%{{y:,.2f}}<extra></extra>"),
+            )
+        )
 
-    first_df = next(iter(results_dict.values()))
-    if x_axis is None:
-        x_axis = list(range(len(first_df)))
+        trace = _rebalance_trace(
+            df["actual_total_delta"], resample_freq, resampled.index, name, color, show_hover, x_hover
+        )
+        if trace is not None:
+            has_rebalances = True
+            fig.add_trace(trace)
 
-    # Create subplots: 2 rows, 1 column
-    depth_fig = make_subplots(
+    # Raw price last, so it is drawn on top
+    raw = _resample(next(iter(results.values())), resample_freq)
+    x, x_title, x_hover = _time_axis(raw.index)
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=raw["raw_price"],
+            mode="lines",
+            name="Raw price (no VLETP impact)",
+            line={"color": "black", "width": 2},
+            **_hover(show_hover, f"<b>Raw price</b><br>Time: {x_hover}<br>Price: $%{{y:,.2f}}<extra></extra>"),
+        )
+    )
+
+    _layout(fig, "Raw vs Simulated Price", title_prefix, height=800)
+    fig.update_layout(
+        xaxis_title=x_title,
+        yaxis_title="Price",
+        legend={**_LEGEND, "title": "Price", "x": 0.02, "y": 0.02, "xanchor": "left", "yanchor": "bottom"},
+    )
+    if has_rebalances:
+        _rebalance_layout(fig, side="right")
+    return fig
+
+
+def plot_leverage(results, vletps, after_rebalance=False, resample_freq=None, show_hover=True, title_prefix=""):
+    """
+    Plot the leverage of each product over time, with its leverage band.
+
+    Short products are drawn below zero, long products above.
+
+    The size of each product's own rebalance trades is available on a secondary axis;
+    those traces are hidden until clicked in the legend.
+
+    Args:
+        results: Results DataFrame, or dict of {label: DataFrame}
+        vletps: The VLETP (or list of VLETPs) that were simulated
+        after_rebalance: Plot leverage after each step's rebalance instead of before it
+        resample_freq: Resample frequency (e.g. '30s', '1min'). None = no resampling.
+            Leverage takes the last value in each period, rebalance sizes are summed.
+        show_hover: Whether to show hover info
+        title_prefix: Prefix for the plot title (e.g. "GBM")
+    """
+    results = _as_dict(results)
+    vletps = vletps if isinstance(vletps, (list, tuple)) else [vletps]
+    prefix = "leverage_after" if after_rebalance else "leverage"
+    fig = go.Figure()
+    x_title = "Time"
+    has_rebalances = False
+
+    trace_idx = 0
+    for name, df in results.items():
+        resampled = _resample(df, resample_freq)
+        x, x_title, x_hover = _time_axis(resampled.index)
+        for product in vletps:
+            label = product.name if len(results) == 1 else f"{name} - {product.name}"
+            color = TRACE_COLORS[trace_idx % len(TRACE_COLORS)]
+            leverage = resampled[f"{prefix}_{product.name}"]
+            fig.add_trace(
+                go.Scatter(
+                    x=x,
+                    y=product.direction * leverage,
+                    mode="lines",
+                    name=label,
+                    line={"color": color, "width": 2},
+                    **_hover(show_hover, f"<b>{label}</b><br>Time: {x_hover}<br>Leverage: %{{y:.3f}}<extra></extra>"),
+                )
+            )
+            trace = _rebalance_trace(
+                df[f"actual_delta_{product.name}"], resample_freq, resampled.index, label, color, show_hover, x_hover
+            )
+            if trace is not None:
+                has_rebalances = True
+                fig.add_trace(trace)
+            trace_idx += 1
+
+    timing = "After Rebalance" if after_rebalance else "Before Rebalance"
+    _layout(fig, f"Leverage {timing}", title_prefix, height=600)
+    fig.update_layout(
+        xaxis_title=x_title,
+        yaxis_title="Leverage (λ)",
+        legend={**_LEGEND, "title": "Leverage", "x": 0.98, "y": 0.02, "xanchor": "right", "yanchor": "bottom"},
+    )
+    fig.update_yaxes(zeroline=True, zerolinecolor="gray", zerolinewidth=1)
+    if has_rebalances:
+        _rebalance_layout(fig, side="left")
+
+    # Leverage band boundaries, once per distinct level
+    bounds = set()
+    for product in vletps:
+        bounds.add((product.direction * product.leverage_upper_bound, "λ_upper"))
+        bounds.add((product.direction * product.leverage_lower_bound, "λ_lower"))
+    for level, label in sorted(bounds):
+        fig.add_hline(
+            y=level,
+            line={"color": "gray", "width": 1, "dash": "dot"},
+            annotation_text=f"{label} = {level:g}",
+            annotation_position="top left",
+            annotation_font_color="gray",
+            annotation_font_size=11,
+        )
+    return fig
+
+
+def plot_orderbook_depth(results, resample_freq=None, show_hover=True, title_prefix=""):
+    """
+    Plot bid and ask depth over time in two subplots. Runs without an orderbook are skipped.
+
+    Args:
+        results: Results DataFrame, or dict of {label: DataFrame}
+        resample_freq: Resample frequency (e.g. '30s', '1min'). None = no resampling.
+        show_hover: Whether to show hover info
+        title_prefix: Prefix for the plot title (e.g. "GBM")
+    """
+    results = _as_dict(results)
+    fig = make_subplots(
         rows=2,
         cols=1,
         subplot_titles=("Bid Depth", "Ask Depth"),
         shared_xaxes=True,
         vertical_spacing=0.12,
     )
+    x_title = "Time"
 
-    for idx, (name, df) in enumerate(results_dict.items()):
-        # Skip "No Orderbook" result
-        if name == "No Orderbook":
-            continue
-
+    for idx, (name, df) in enumerate(results.items()):
+        if df["depth_bid"].isna().all():
+            continue  # run had no orderbook
         color = TRACE_COLORS[idx % len(TRACE_COLORS)]
-
-        # Check if depth columns exist
-        if "depth_bid" not in df.columns or "depth_ask" not in df.columns:
-            continue
-
-        # Plot bid depth (row 1)
-        depth_fig.add_trace(
-            go.Scatter(
-                x=x_axis,
-                y=df["depth_bid"].values,
-                mode="lines",
-                name=name,
-                line={"color": color, "width": 2},
-                legendgroup=name,
-                hovertemplate=(
-                    f"<b>{name} Bid</b><br>Time: %{{x|%H:%M:%S}}<br>Depth: $%{{y:,.0f}}<extra></extra>"
-                    if show_hover
-                    else None
+        resampled = _resample(df, resample_freq)
+        x, x_title, x_hover = _time_axis(resampled.index)
+        for row, (side, column) in enumerate((("Bid", "depth_bid"), ("Ask", "depth_ask")), start=1):
+            fig.add_trace(
+                go.Scatter(
+                    x=x,
+                    y=resampled[column],
+                    mode="lines",
+                    name=name,
+                    legendgroup=name,
+                    showlegend=row == 1,
+                    line={"color": color, "width": 2},
+                    **_hover(
+                        show_hover,
+                        f"<b>{name} {side}</b><br>Time: {x_hover}<br>Depth: $%{{y:,.0f}}<extra></extra>",
+                    ),
                 ),
-                hoverinfo="skip" if not show_hover else None,
-            ),
-            row=1,
-            col=1,
+                row=row,
+                col=1,
+            )
+
+    _layout(fig, "Orderbook Depth Over Time", title_prefix, height=800)
+    fig.update_layout(
+        legend={**_LEGEND, "x": 0.02, "y": 0.98, "xanchor": "left", "yanchor": "top", "tracegroupgap": 0},
+    )
+    fig.update_xaxes(title_text=x_title, row=2, col=1)
+    fig.update_yaxes(title_text="Depth", rangemode="tozero")
+    return fig
+
+
+def _orderbook_depth_curve(x, orderbook):
+    """
+    Cumulative depth f(z) = D * t/(k + (1-k)*t) of an orderbook at price deviations x (%).
+
+    Negative x is the bid side, positive x the ask side. Uses the full (undepleted) depth.
+    """
+    depth_bid, depth_ask = orderbook.depth_bid_full, orderbook.depth_ask_full
+    width_bid, width_ask = orderbook.width_bid * 100, orderbook.width_ask * 100
+    spread_bid, spread_ask = orderbook.spread_bid * 100, orderbook.spread_ask * 100
+    k_bid, k_ask = orderbook.k_bid, orderbook.k_ask
+
+    t_bid = (-x - spread_bid) / (width_bid - spread_bid)
+    bid_curve = depth_bid * t_bid / (k_bid + (1 - k_bid) * t_bid)
+
+    t_ask = (x - spread_ask) / (width_ask - spread_ask)
+    ask_curve = depth_ask * t_ask / (k_ask + (1 - k_ask) * t_ask)
+
+    return np.where(
+        x <= -width_bid,
+        depth_bid,
+        np.where(
+            x <= -spread_bid,
+            bid_curve,
+            np.where(x < spread_ask, 0, np.where(x < width_ask, ask_curve, depth_ask)),
+        ),
+    )
+
+
+def _format_side(bid, ask):
+    """Format a per-side parameter: one number if both sides match, else bid/ask."""
+    return f"{bid:g}" if bid == ask else f"{bid:g}/{ask:g}"
+
+
+def _grid_shape(n, rows, cols):
+    """Rows and columns for n panels. Missing values are derived: by default up to 2 columns."""
+    if rows is None and cols is None:
+        cols = min(n, 2)
+    if cols is None:
+        cols = -(-n // rows)
+    if rows is None:
+        rows = -(-n // cols)
+    if rows < 1 or cols < 1:
+        raise ValueError(f"rows and cols must be at least 1, got rows={rows}, cols={cols}")
+    if rows * cols < n:
+        raise ValueError(f"A {rows}x{cols} grid has room for {rows * cols} orderbooks, got {n}")
+    return rows, cols
+
+
+def plot_orderbooks(orderbooks, rows=None, cols=None, title=None, figsize=None):
+    """
+    Plot what one or more orderbooks look like: cumulative bid and ask depth against the
+    price deviation from mid, one panel per orderbook.
+
+    All panels share the same axis ranges, so the orderbooks can be compared by eye. The
+    full depth is plotted, regardless of any depletion from earlier simulations.
+
+    Args:
+        orderbooks: An Orderbook, or a list of Orderbooks
+        rows: Number of rows in the grid of panels. None = derived from cols.
+        cols: Number of columns in the grid of panels. None = derived from rows, or
+            up to 2 columns if rows is not given either.
+        title: Title above all panels (optional)
+        figsize: Figure size (width, height) in inches. None = scaled to the grid.
+
+    Returns:
+        The matplotlib Figure (show it with plt.show(), save it with fig.savefig(path))
+    """
+    orderbooks = [orderbooks] if isinstance(orderbooks, Orderbook) else list(orderbooks)
+    if not orderbooks:
+        raise ValueError("No orderbooks to plot")
+    rows, cols = _grid_shape(len(orderbooks), rows, cols)
+
+    if figsize is None:
+        figsize = (max(5.25 * cols, 6.5), 3.2 * rows + 0.8)
+    fig, axes = plt.subplots(rows, cols, figsize=figsize, squeeze=False, layout="constrained")
+    axes = axes.flatten()
+
+    x_limit = 1.2 * 100 * max(max(ob.width_bid, ob.width_ask) for ob in orderbooks)
+    y_limit = 1.2 * max(max(ob.depth_bid_full, ob.depth_ask_full) for ob in orderbooks)
+    x = np.linspace(-x_limit, x_limit, 1000)
+
+    for ax, ob in zip(axes, orderbooks):
+        y = _orderbook_depth_curve(x, ob)
+
+        ax.fill_between(x, y, where=(x < 0), color="green", alpha=0.3, label="Cumulative Bid")
+        ax.fill_between(x, y, where=(x > 0), color="red", alpha=0.3, label="Cumulative Ask")
+        ax.plot(x[x <= 0], y[x <= 0], color="green", lw=0.7)
+        ax.plot(x[x >= 0], y[x >= 0], color="red", lw=0.7)
+
+        parameters = (
+            f"Depth=${_format_side(ob.depth_bid_full / 1e6, ob.depth_ask_full / 1e6)}M, "
+            f"Width={_format_side(ob.width_bid * 100, ob.width_ask * 100)}%, "
+            f"Spread={_format_side(ob.spread_bid * 100, ob.spread_ask * 100)}%"
         )
+        if ob.k_bid != 1 or ob.k_ask != 1:
+            parameters += f", k={_format_side(ob.k_bid, ob.k_ask)}"
+        ax.set_title(f"{ob.name}\n{parameters}", fontsize=10)
+        ax.set_xlabel("Price deviation (%)")
+        ax.set_xlim(-x_limit, x_limit)
+        ax.set_ylabel("Depth (USD)")
+        ax.set_ylim(0, y_limit)
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:,.0f}"))
+        ax.grid(True, alpha=0.3)
 
-        # Plot ask depth (row 2)
-        depth_fig.add_trace(
-            go.Scatter(
-                x=x_axis,
-                y=df["depth_ask"].values,
-                mode="lines",
-                name=name,
-                line={"color": color, "width": 2},
-                legendgroup=name,
-                showlegend=False,
-                hovertemplate=(
-                    f"<b>{name} Ask</b><br>Time: %{{x|%H:%M:%S}}<br>Depth: $%{{y:,.0f}}<extra></extra>"
-                    if show_hover
-                    else None
-                ),
-                hoverinfo="skip" if not show_hover else None,
-            ),
-            row=2,
-            col=1,
-        )
+    for ax in axes[len(orderbooks) :]:
+        ax.axis("off")
 
-    depth_fig.update_layout(
-        title=(f"{title_prefix} Orderbook Depth Over Time" if title_prefix else "Orderbook Depth Over Time"),
-        title_x=0.5,
-        title_xanchor="center",
-        title_font_size=28,
-        hovermode="closest",
-        template="plotly_white",
-        height=800,
-        font={"size": 12, "color": "black"},
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-        legend={
-            "x": 0.02,
-            "y": 0.98,
-            "bgcolor": "rgba(255, 255, 255, 0.9)",
-            "bordercolor": "black",
-            "borderwidth": 1,
-            "xanchor": "left",
-            "yanchor": "top",
-            "font": {"color": "black", "size": 12},
-            "tracegroupgap": 0,
-        },
-        margin={"l": 80, "r": 80, "t": 100, "b": 80},
-    )
-
-    # Update x-axes
-    depth_fig.update_xaxes(
-        showgrid=True,
-        gridwidth=1,
-        gridcolor="lightgray",
-        title_font_color="black",
-        tickfont_color="black",
-        title_text="Timestamp",
-        row=2,
-        col=1,
-    )
-
-    # Update y-axes
-    depth_fig.update_yaxes(
-        showgrid=True,
-        gridwidth=1,
-        gridcolor="lightgray",
-        title_font_color="black",
-        tickfont_color="black",
-        title_text="Depth (USD)",
-        rangemode="tozero",
-    )
-
-    return depth_fig
+    if title:
+        fig.suptitle(title, fontsize=14)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="outside lower center", ncol=2, fontsize=10)
+    return fig

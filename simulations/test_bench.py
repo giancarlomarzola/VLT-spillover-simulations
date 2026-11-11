@@ -4,8 +4,8 @@ import pandas as pd
 from core.orderbook import Orderbook
 from core.price_spillover_simulations import run_simulation
 from utils.data_io import processed_filename
+from utils.legacy_plotting import plot_orderbook_depth, plot_results
 from utils.paths import DATA_PROCESSED
-from utils.plotting import plot_orderbook_depth, plot_results
 
 # Parameters
 currency = "btc"

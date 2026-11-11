@@ -6,7 +6,7 @@ from core.orderbook import Orderbook
 from core.price_process import generate_gbm_price_series
 from core.simulation import run_simulation, summarise_run
 from core.variable_leverage_product import VLETP
-from utils.simulation_plots import plot_leverage, plot_orderbook_depth, plot_prices  # noqa: F401 (interactive use)
+from utils.plotting import plot_leverage, plot_orderbook_depth, plot_prices  # noqa: F401 (interactive use)
 
 # Products
 gbm_up = VLETP(

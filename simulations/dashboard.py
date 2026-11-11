@@ -14,8 +14,8 @@ import streamlit as st
 from core.orderbook import Orderbook
 from core.price_spillover_simulations import run_simulation
 from utils.data_io import FREQUENCIES, processed_filename
+from utils.legacy_plotting import plot_orderbook_depth, plot_results, resample_data
 from utils.paths import DATA_PROCESSED
-from utils.plotting import plot_orderbook_depth, plot_results, resample_data
 
 
 def frequency_to_seconds(freq):
