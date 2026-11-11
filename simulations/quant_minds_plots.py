@@ -11,7 +11,7 @@ save_plots = True
 # Orderbook parameter examples
 # ========================================
 
-baseline_depth = 50_000_000
+baseline_depth = 250_000_000
 baseline_width = 0.01
 baseline_spread = 0.005 / 100
 baseline_k = 0.3
@@ -28,7 +28,7 @@ orderbooks_list = [
     ),
     Orderbook(
         name="Lower Depth",
-        depth=0.3 * baseline_depth,
+        depth=0.5 * baseline_depth,
         width=baseline_width,
         spread=baseline_spread,
         k=baseline_k,
@@ -46,7 +46,7 @@ orderbooks_list = [
         name="Larger Spread",
         depth=baseline_depth,
         width=baseline_width,
-        spread=10 * baseline_spread,
+        spread=20 * baseline_spread,
         k=baseline_k,
         resilience=baseline_resilience,
     ),
@@ -75,7 +75,7 @@ for orderbook in orderbooks_list:
     fig = plot_orderbooks(
         orderbook,
         show_parameters=False, show_legend=False,
-        x_limit=1.2, y_limit=60_000_000,
+        x_limit=1.2, y_limit=300_000_000,
         baseline=baseline_orderbook,  # dotted outline; skipped on the baseline's own plot
         )
 
