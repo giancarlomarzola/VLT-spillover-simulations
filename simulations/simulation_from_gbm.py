@@ -4,8 +4,8 @@ import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+import matplotlib.pyplot as plt
 import pandas as pd
-import plotly.graph_objects as go
 
 from core.gbm_iterations import run_iteration, saved_seeds, simulate_seed  # noqa: F401 (interactive use)
 from core.orderbook import Orderbook
@@ -199,8 +199,19 @@ if __name__ == "__main__":
     existing_seeds = saved_seeds(results_dir)
     seeds = list(itertools.islice((s for s in itertools.count() if s not in existing_seeds), n_iterations))
 
+    n_processes = min(n_workers, n_iterations)
+    runs_per_iteration = len(volatilities) * len(orderbooks)
+    print(
+        f"Running {n_iterations} iterations (seeds {seeds[0]} to {seeds[-1]}) on {n_processes} processes\n"
+        f"  Each iteration: {len(volatilities)} volatilities x {len(orderbooks)} orderbooks = "
+        f"{runs_per_iteration} runs of {n_prices:,} prices ({n_iterations * runs_per_iteration:,} runs in total)\n"
+        f"  Already saved: {len(existing_seeds)} iterations in {results_dir}\n"
+        "  The first results can take a while to appear, as iterations finish in batches",
+        flush=True,
+    )
+
     started = time.perf_counter()
-    pool = ProcessPoolExecutor(max_workers=min(n_workers, n_iterations))
+    pool = ProcessPoolExecutor(max_workers=n_processes)
     try:
         futures = [pool.submit(run_iteration, seed, results_dir, **setup) for seed in seeds]
         for n_done, future in enumerate(as_completed(futures), start=1):
@@ -218,16 +229,13 @@ if __name__ == "__main__":
     plot_series = generate_gbm_price_series(
         n_prices=n_prices, start_price=start_price, mu=mu, sigma=vol, time_step=time_step, seed=seeds[-1]
     )
-    fig = go.Figure(
-        go.Scatter(x=plot_series.index.total_seconds() / 86_400, y=plot_series, mode="lines", name="vol_60")
-    )
-    fig.update_layout(
-        title=f"GBM price path, {round(vol * 100)}% volatility, seed={seeds[-1]}",
-        xaxis_title="Time elapsed (days)",
-        yaxis_title="Price",
-        template="plotly_white",
-    )
-    fig.show()
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(plot_series.index.total_seconds() / 86_400, plot_series, linewidth=0.8)
+    ax.set_title(f"GBM price path, {round(vol * 100)}% volatility, seed={seeds[-1]}")
+    ax.set_xlabel("Time elapsed (days)")
+    ax.set_ylabel("Price")
+    ax.grid(alpha=0.3)
+    plt.show()
 
     # To inspect one iteration in full, re-run it here (the seed makes it reproducible):
     # summary, results = simulate_seed(seeds[-1], **setup, keep_results=True)
