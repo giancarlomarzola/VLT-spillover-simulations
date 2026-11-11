@@ -417,6 +417,7 @@ def plot_orderbooks(
     figsize=None,
     x_limit=None,
     y_limit=None,
+    show_legend=True,
 ):
     """
     Plot what one or more orderbooks look like: cumulative bid and ask depth against the
@@ -438,6 +439,7 @@ def plot_orderbooks(
             x_limit, a (min, max) tuple = that range. None = 1.2x the widest orderbook.
         y_limit: Range of the y axis, in USD. A number = from 0 to y_limit, a (min, max)
             tuple = that range. None = 1.2x the deepest orderbook.
+        show_legend: Whether to show the bid/ask legend below the panels
 
     Returns:
         The matplotlib Figure (show it with plt.show(), save it with fig.savefig(path))
@@ -493,6 +495,7 @@ def plot_orderbooks(
 
     if title:
         fig.suptitle(title, fontsize=14)
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="outside lower center", ncol=2, fontsize=10)
+    if show_legend:
+        handles, labels = axes[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="outside lower center", ncol=2, fontsize=10)
     return fig
