@@ -90,12 +90,12 @@ shape_orderbook = Orderbook(
 )
 
 resilience_orderbook = Orderbook(
-    name="resilience 12h",
+    name="resilience 1h",
     depth=baseline_depth,
     width=baseline_width,
     spread=baseline_spread,
     k=baseline_k,
-    resilience=pd.Timedelta("12h"),
+    resilience=pd.Timedelta("1h"),
 )
 
 # None = no orderbook: rebalances have no price impact (the reference run)
@@ -122,7 +122,7 @@ time_step = "5min"
 # Results are saved one file per seed in data/outputs/GBM_simulations/<experiment>/iterations/, and running
 # this script again uses the next unused seeds, adding to what is already there.
 # simulation_from_gbm_table.py builds the table of averages from those files.
-experiment = "simulation_from_gbm - nearest boundary UP and DOWN"  # use a new name/delete the folder when the setup above changes
+experiment = "nearest boundary UP and DOWN"  # use a new name/delete the folder when the setup above changes
 n_iterations = 1_000
 n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
 
