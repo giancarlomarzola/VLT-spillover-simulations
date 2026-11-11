@@ -15,7 +15,7 @@ gbm_up = VLETP( # in line with total for products on TSLA/NVDA etc
     start_leverage=2,
     leverage_lower_bound=1,
     leverage_upper_bound=3,
-    leverage_target=None, # TODO: Add option to provide tuple for lower/upper target
+    leverage_target=None, # None: nearest boundary; number: fixed target; (lower, upper): nearest of the two
 )
 
 gbm_down  = VLETP( # in line with total for products on TSLA/NVDA etc

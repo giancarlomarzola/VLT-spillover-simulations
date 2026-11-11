@@ -12,7 +12,8 @@ class VLETP:
         start_nav: Initial net asset value, in quote currency (v_0). Must be positive.
         start_leverage: Initial leverage, signed like the band (positive for a long
             product, negative for a short product). Initial notional exposure (x*_0)
-            is start_leverage * start_nav.
+            is start_leverage * start_nav. May lie outside the leverage band, in which
+            case the product rebalances on its first step like any other breach.
         leverage_lower_bound: Lower boundary of the leverage band.
         leverage_upper_bound: Upper boundary of the leverage band.
             The sign of the band sets the direction of the product: both boundaries
@@ -20,7 +21,10 @@ class VLETP:
             (DOWN) product, e.g. [-4, -1.25]. They must share the same sign.
         leverage_target: Leverage to rebalance to once the band is breached, signed like
             the band. None means boundary rebalancing (snap back to whichever boundary
-            was breached).
+            was breached). A single number always rebalances to that leverage. A tuple
+            (lower target, upper target) rebalances to the nearest of the two: the lower
+            target after a lower-boundary breach, the upper target after an upper-boundary
+            breach, e.g. band [1, 3] with targets (1.5, 2.5).
 
     Derived from the band:
         direction: +1 for a long product, -1 for a short product (omega).
@@ -49,7 +53,7 @@ class VLETP:
         start_leverage,
         leverage_lower_bound,
         leverage_upper_bound,
-        leverage_target=None, # 'None' targets nearest boundary
+        leverage_target=None, # None: nearest boundary; number: fixed target; (lower, upper): nearest of the two
     ):
         if not isinstance(name, str):
             raise TypeError(f"name must be string, got {type(name)}")
@@ -68,8 +72,20 @@ class VLETP:
             raise ValueError(f"leverage_lower_bound must not exceed leverage_upper_bound, got {band}")
         band_min = min(leverage_lower_bound, leverage_upper_bound)
         band_max = max(leverage_lower_bound, leverage_upper_bound)
-        if leverage_target is not None and not band_min <= leverage_target <= band_max:
-            raise ValueError(f"leverage_target ({leverage_target}) must lie inside the leverage band {band}")
+        if isinstance(leverage_target, (tuple, list)):
+            if len(leverage_target) != 2:
+                raise ValueError(
+                    "leverage_target must be None, a number or a (lower target, upper target) pair, "
+                    f"got {leverage_target}"
+                )
+            targets = tuple(leverage_target)
+        elif leverage_target is None:
+            targets = ()
+        else:
+            targets = (leverage_target,)
+        for target in targets:
+            if not band_min <= target <= band_max:
+                raise ValueError(f"leverage_target ({target}) must lie inside the leverage band {band}")
         if direction * start_leverage < 0:
             raise ValueError(
                 f"start_leverage ({start_leverage}) must have the same sign as the leverage band {band}"
@@ -82,7 +98,11 @@ class VLETP:
         # Stored as magnitudes; a short band may be given as [-4, -1.25] or [-1.25, -4]
         self.leverage_lower_bound = min(abs(leverage_lower_bound), abs(leverage_upper_bound))
         self.leverage_upper_bound = max(abs(leverage_lower_bound), abs(leverage_upper_bound))
-        self.leverage_target = None if leverage_target is None else abs(leverage_target)
+        # None, a single magnitude, or a (lower target, upper target) pair of magnitudes
+        if len(targets) == 2:
+            self.leverage_target = tuple(sorted(abs(target) for target in targets))
+        else:
+            self.leverage_target = abs(targets[0]) if targets else None
 
         self.reset()
 
@@ -121,10 +141,8 @@ class VLETP:
         self.exposure = self.start_leverage * self.start_nav
         self.exposure_after = self.exposure
 
-        # Initial leverage is reset to the nearest boundary if it starts outside the band (eqn 13)
-        start_leverage = min(max(abs(self.start_leverage), self.leverage_lower_bound), self.leverage_upper_bound)
-        self.leverage = start_leverage
-        self.leverage_after = start_leverage
+        self.leverage = abs(self.start_leverage)
+        self.leverage_after = self.leverage
 
         self.target_delta = 0.0
         self.actual_delta = 0.0
@@ -177,13 +195,19 @@ class VLETP:
     def rebalance_leverage(self):
         """
         Leverage the product wants to hold after this step: unchanged while inside the
-        band, otherwise leverage_target (target mode) or the breached boundary (boundary mode).
+        band, otherwise the breached boundary (boundary mode), the single leverage_target, or
+        the nearest of the (lower target, upper target) pair (target mode).
         """
         if not self.needs_rebalance():
             return self.leverage
-        if self.leverage_target is not None:
+        if self.leverage_target is None:
+            candidates = (self.leverage_lower_bound, self.leverage_upper_bound)
+        elif isinstance(self.leverage_target, tuple):
+            candidates = self.leverage_target
+        else:
             return self.leverage_target
-        return self.leverage_lower_bound if self.leverage < self.leverage_lower_bound else self.leverage_upper_bound
+        # Nearest candidate: the lower one after a lower breach, the upper one after an upper breach
+        return min(candidates, key=lambda candidate: abs(candidate - self.leverage))
 
     def calculate_rebalance(self):
         """
