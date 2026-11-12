@@ -70,15 +70,19 @@ orderbooks_list = [
 
 
 baseline_orderbook = orderbooks_list[0]
+output_dir = FIGURES_DIR / "quant_minds"
+if save_plots:
+    output_dir.mkdir(parents=True, exist_ok=True)
 
 for orderbook in orderbooks_list:
     fig = plot_orderbooks(
         orderbook,
         show_parameters=False, show_legend=False,
         x_limit=1.2, y_limit=300_000_000,
+        figsize=(4.8, 3.1),  # small canvas = large text relative to the plot (saved at 300 dpi)
         baseline=baseline_orderbook,  # dotted outline; skipped on the baseline's own plot
         )
 
     if save_plots:
-        fig.savefig(FIGURES_DIR / "quant_minds" / f"orderbook_{orderbook.name}.png", dpi=300, bbox_inches="tight")
+        fig.savefig(output_dir / f"orderbook_{orderbook.name}.png", dpi=300, bbox_inches="tight")
 

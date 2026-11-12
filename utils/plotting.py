@@ -453,7 +453,7 @@ def plot_orderbooks(
     rows, cols = _grid_shape(len(orderbooks), rows, cols)
 
     if figsize is None:
-        figsize = (max(5.25 * cols, 6.5), 3.2 * rows + 0.8)
+        figsize = (max(6.25 * cols, 7), 3.6 * rows + 0.9)
     fig, axes = plt.subplots(rows, cols, figsize=figsize, squeeze=False, layout="constrained")
     axes = axes.flatten()
 
@@ -489,11 +489,12 @@ def plot_orderbooks(
         )
         if ob.k_bid != 1 or ob.k_ask != 1:
             parameters += f", k={_format_side(ob.k_bid, ob.k_ask)}"
-        ax.set_title(f"{ob.name}\n{parameters}" if show_parameters else ob.name, fontsize=10)
-        ax.set_xlabel("Price deviation (%)")
+        ax.set_title(f"{ob.name}\n{parameters}" if show_parameters else ob.name, fontsize=13)
+        ax.set_xlabel("Price deviation (%)", fontsize=12)
         ax.set_xlim(x_min, x_max)
-        ax.set_ylabel("Depth (USD millions)")
+        ax.set_ylabel("Depth (USD millions)", fontsize=12)
         ax.set_ylim(y_min, y_max)
+        ax.tick_params(labelsize=11)
         ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value / 1e6:,.10g}"))
         #ax.grid(True, alpha=0.3)
 
@@ -501,7 +502,7 @@ def plot_orderbooks(
         ax.axis("off")
 
     if title:
-        fig.suptitle(title, fontsize=14)
+        fig.suptitle(title, fontsize=17)
     if show_legend:
         # Collect across panels: the baseline's own panel has no reference line
         legend_entries = {}
@@ -513,6 +514,6 @@ def plot_orderbooks(
             legend_entries.keys(),
             loc="outside lower center",
             ncol=len(legend_entries),
-            fontsize=10,
+            fontsize=12,
         )
     return fig
