@@ -239,7 +239,19 @@ if __name__ == "__main__":
     ax.grid(alpha=0.3)
     plt.show()
 
-    # To inspect one iteration in full, re-run it here (the seed makes it reproducible):
-    # summary, results = simulate_seed(seeds[-1], **setup, keep_results=True)
-    # plot_prices(results["vol_60", "depth"])
-    # plot_leverage(results["vol_100", "depth"], gbm_up)
+# To inspect one iteration in full, re-run 
+# the following block in interactive winodw (the seed makes it reproducible):
+""" 
+from simulations.simulation_from_gbm import setup, gbm_up, gbm_down
+from core.gbm_iterations import simulate_seed
+from utils.plotting import plot_prices, plot_leverage, plot_orderbook_depth
+
+seed = 42  # the N in data/outputs/<experiment>/iterations/seed_0000NN.parquet
+products = [gbm_up, gbm_down]
+
+summary, results = simulate_seed(seed, **{**setup, "vletps": products}, keep_results=True)
+
+r = results["vol_60", "shape k3"]
+plot_prices(r).show()
+plot_leverage(r, products).show()
+"""
