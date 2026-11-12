@@ -257,3 +257,32 @@ def summarise_run(result: pd.DataFrame, vletps: VLETP | list[VLETP]) -> dict:
     summary["realised_vol_simulated"] = vol_simulated
     summary["realised_vol_ratio"] = vol_simulated / vol_raw if vol_raw > 0 else np.nan
     return summary
+
+
+# A run is a feedback loop once rebalancing alone has pushed the price this many times above,
+# or below 1/this of, the price without any impact. Normal runs stay within about 2x either
+# way; loops run off to the 1e-10 floor or to overflow, so the exact value matters little.
+FEEDBACK_LOOP_MULTIPLIER = 10
+
+
+def flag_feedback_loops(runs: pd.DataFrame) -> pd.DataFrame:
+    """
+    Flag the runs where a fatal feedback loop took hold: rebalances moved the price, the
+    price move forced more rebalances in the same direction, and so on until the price
+    multiplier ran away and at least one product was wiped out.
+
+    runs: summarise_run outputs, one row per run (e.g. the saved per-seed files concatenated).
+
+    Returns a DataFrame on the same index with:
+        feedback_loop: True for a fatal feedback loop.
+        feedback_loop_up / feedback_loop_down: the direction of the loop (price
+            multiplier above FEEDBACK_LOOP_MULTIPLIER, or below 1 / FEEDBACK_LOOP_MULTIPLIER).
+    """
+    max_multiplier = 1 + runs["max_price_deviation"].astype(float)
+    min_multiplier = 1 + runs["min_price_deviation"].astype(float)
+    wipeout_columns = [column for column in runs.columns if column.startswith("wipeout_time_")]
+    any_wipeout = runs[wipeout_columns].notna().any(axis=1)
+
+    up = (max_multiplier >= FEEDBACK_LOOP_MULTIPLIER) & any_wipeout
+    down = (min_multiplier <= 1 / FEEDBACK_LOOP_MULTIPLIER) & any_wipeout
+    return pd.DataFrame({"feedback_loop": up | down, "feedback_loop_up": up, "feedback_loop_down": down})

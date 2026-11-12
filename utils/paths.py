@@ -10,6 +10,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATA_RAW = DATA_DIR / "raw"
 DATA_PROCESSED = DATA_DIR / "processed"
 DATA_OUTPUTS = DATA_DIR / "outputs"
+GBM_SIMULATIONS = DATA_OUTPUTS / "GBM_simulations"  # one folder per simulation_from_gbm.py experiment
 
 # Output directories
 FIGURES_DIR = DATA_OUTPUTS / "figures"

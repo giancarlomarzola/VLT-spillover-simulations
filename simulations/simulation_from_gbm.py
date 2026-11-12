@@ -11,7 +11,7 @@ from core.gbm_iterations import run_iteration, saved_seeds, simulate_seed  # noq
 from core.orderbook import Orderbook
 from core.price_process import generate_gbm_price_series
 from core.variable_leverage_product import VLETP
-from utils.paths import DATA_OUTPUTS
+from utils.paths import GBM_SIMULATIONS
 from utils.plotting import plot_leverage, plot_orderbook_depth, plot_prices  # noqa: F401 (interactive use)
 
 # IMPORTANT NOTE: SIMULATIONS ASSUME MARKETS RUNNING 24/7
@@ -21,17 +21,16 @@ gbm_up = VLETP( # in line with total for products on TSLA/NVDA etc
     name="GBM_UP",
     start_nav=3_000_000_000, 
     start_leverage=2,
-    leverage_lower_bound=1,
+    leverage_lower_bound=1.25,
     leverage_upper_bound=3,
     leverage_target=None, # None: nearest boundary; number: fixed target; (lower, upper): nearest of the two
 )
 
-# currently not in model
 gbm_down  = VLETP( # in line with total for products on TSLA/NVDA etc
     name="GBM_DOWN",
     start_nav=100_000_000, 
     start_leverage=-2,
-    leverage_lower_bound=-1,
+    leverage_lower_bound=-1.25,
     leverage_upper_bound=-3,
     leverage_target=None,
 )
@@ -91,12 +90,12 @@ shape_orderbook = Orderbook(
 )
 
 resilience_orderbook = Orderbook(
-    name="resilience 12h",
+    name="resilience 1h",
     depth=baseline_depth,
     width=baseline_width,
     spread=baseline_spread,
     k=baseline_k,
-    resilience=pd.Timedelta("12h"),
+    resilience=pd.Timedelta("1h"),
 )
 
 # None = no orderbook: rebalances have no price impact (the reference run)
@@ -120,16 +119,16 @@ time_step = "5min"
 
 # Iterations: each one takes a new seed and runs every (volatility, orderbook) pair on it.
 # Within an iteration every path shares the seed, so they differ only in volatility.
-# Results are saved one file per seed in data/outputs/<experiment>/iterations/, and running
+# Results are saved one file per seed in data/outputs/GBM_simulations/<experiment>/iterations/, and running
 # this script again uses the next unused seeds, adding to what is already there.
 # simulation_from_gbm_table.py builds the table of averages from those files.
-experiment = "simulation_from_gbm - nearest boundary"  # use a new name/delete the folder when the setup above changes
+experiment = "nearest boundary UP and DOWN"  # use a new name/delete the folder when the setup above changes
 n_iterations = 1_000
 n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
 
 # Everything simulate_seed needs besides the seed
 setup = {
-    "vletps": gbm_up,
+    "vletps": [gbm_up, gbm_down],
     "orderbooks": orderbooks,
     "volatilities": volatilities,
     "n_prices": n_prices,
@@ -140,24 +139,26 @@ setup = {
 
 # The guard keeps the worker processes, which re-import this file, from starting runs of their own
 if __name__ == "__main__":
-    experiment_dir = DATA_OUTPUTS / experiment  # config.json and the summary table
+    experiment_dir = GBM_SIMULATIONS / experiment  # config.json and the summary table
     results_dir = experiment_dir / "iterations"  # one parquet file per seed
     results_dir.mkdir(parents=True, exist_ok=True)
 
     # Setup the saved results belong to. Runs with a different setup must not be averaged
     # together, so the folder is tied to the setup of the first run saved in it.
     config = {
-        "product": {
-            name: getattr(gbm_up, name)
-            for name in [
-                "name",
-                "start_nav",
-                "start_leverage",
-                "direction",
-                "leverage_lower_bound",
-                "leverage_upper_bound",
-                "leverage_target",
-            ]
+        "products": {
+            product.name: {
+                name: getattr(product, name)
+                for name in [
+                    "start_nav",
+                    "start_leverage",
+                    "direction",
+                    "leverage_lower_bound",
+                    "leverage_upper_bound",
+                    "leverage_target",
+                ]
+            }
+            for product in ([setup["vletps"]] if isinstance(setup["vletps"], VLETP) else setup["vletps"])
         },
         "orderbooks": {
             orderbook.name: {
