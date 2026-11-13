@@ -14,7 +14,9 @@ from core.variable_leverage_product import VLETP
 from utils.paths import GBM_SIMULATIONS
 from utils.plotting import plot_leverage, plot_orderbook_depth, plot_prices  # noqa: F401 (interactive use)
 
-# IMPORTANT NOTE: SIMULATIONS ASSUME MARKETS RUNNING 24/7
+# IMPORTANT NOTE: 
+# SIMULATIONS ASSUME MARKETS RUNNING 24/7
+# SIMULATIONS ASSUME ALL RESETS ARE DONE IMMEDIATELY TO THE FULL EXTENT
 
 # Products
 gbm_up = VLETP( # in line with total for products on TSLA/NVDA etc

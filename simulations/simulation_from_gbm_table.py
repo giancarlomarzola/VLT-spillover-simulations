@@ -18,7 +18,7 @@ from openpyxl.utils import get_column_letter
 from core.simulation import flag_feedback_loops
 from utils.paths import GBM_SIMULATIONS
 
-experiment = "nearest boundary UP and DOWN"  # folder in data/outputs/GBM_simulations/ written by simulation_from_gbm.py
+experiment = "exp_recovery_UPDOWN"  # folder in data/outputs/GBM_simulations/ written by simulation_from_gbm.py
 
 experiment_dir = GBM_SIMULATIONS / experiment
 results_dir = experiment_dir / "iterations"  # one parquet file per seed

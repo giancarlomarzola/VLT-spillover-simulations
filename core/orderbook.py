@@ -2,7 +2,6 @@ import math
 
 import pandas as pd
 
-
 # Relative gap below which a recovering side is snapped back to exactly full depth.
 # Exponential recovery only approaches full depth asymptotically; snapping lets callers
 # detect a full book with ==, at an error far below anything the simulation can resolve.
