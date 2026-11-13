@@ -16,7 +16,7 @@ lambda_upper = 4  # upper boundary
 lambda_lower = 1.25  # lower boundary
 
 k = 0.3
-resilience = "5s"  # time to fully replenish the orderbook
+resilience = "5s"  # half-life of orderbook depth recovery
 
 deep, shallow = 50_000_000, 10_000_000
 narrow, wide = 1 / 100, 10 / 100

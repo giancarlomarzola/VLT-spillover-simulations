@@ -198,8 +198,8 @@ def test_all_products_are_scaled_back_equally(up_product, down_product, price_se
 
 
 def test_orderbook_replenishes_between_steps(up_product, price_series):
-    # 10s to refill and 1s steps: a tenth of full depth comes back after each step
-    book = Orderbook("book", depth=1_000, width=0.01, spread=0.001, resilience="10s")
+    # 0.1s half-life and 1s steps: ten half-lives pass per step, so the gap shrinks ~1000x
+    book = Orderbook("book", depth=1_000, width=0.01, spread=0.001, resilience="0.1s")
     result = run_simulation(up_product, book, price_series([100, 100, 60, 60]))
     assert result["depth_bid"].iloc[2] == pytest.approx(940)
     assert result["depth_bid"].iloc[3] == pytest.approx(1_000, abs=1)  # refilled, minus a tiny follow-up trade

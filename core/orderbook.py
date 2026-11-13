@@ -3,14 +3,27 @@ import math
 import pandas as pd
 
 
+# Relative gap below which a recovering side is snapped back to exactly full depth.
+# Exponential recovery only approaches full depth asymptotically; snapping lets callers
+# detect a full book with ==, at an error far below anything the simulation can resolve.
+_FULL_DEPTH_TOLERANCE = 1e-12
+
+
 def _replenish_seconds(value):
-    """Convert a resilience value (duration string, Timedelta, seconds or None) to seconds."""
+    """Convert a resilience half-life (duration string, Timedelta, seconds or None) to seconds."""
     if value is None:
         return math.inf
     seconds = pd.Timedelta(value).total_seconds() if isinstance(value, (str, pd.Timedelta)) else float(value)
     if seconds < 0:
         raise ValueError(f"resilience must not be negative, got {value!r}")
     return seconds
+
+
+def _resilience_rate(half_life):
+    """Resilience rate rho (per second) for a half-life in seconds: rho = ln(2) / half_life."""
+    if half_life == 0:
+        return math.inf  # instant replenishment
+    return math.log(2) / half_life  # half_life = inf gives rho = 0, i.e. never recovers
 
 
 def _bid_ask(value, param):
@@ -37,13 +50,15 @@ class Orderbook:
         spread: Spread at zero depth (in decimal, e.g., 0.005 for 0.5%).
         k: Curvature parameter for slippage formula.
             k=1 gives linear slippage; k<1 gives convex curve; k>1 gives concave curve
-        resilience: Time needed to fully replenish an empty book, as a duration string or
-            Timedelta (e.g. "30min", "2h") or a number of seconds. Depth recovers linearly,
-            so half that time restores half of full depth. 0=replenished instantly
+        resilience: Half-life of depth recovery, as a duration string or Timedelta
+            (e.g. "30min", "2h") or a number of seconds. Depth recovers exponentially:
+            the missing depth halves every half-life, so one half-life restores 50% of
+            what a trade removed, two restore 75%, three 87.5%. 0=replenished instantly
             (perfect resilience, the default), None=depth never recovers.
 
-    The per-side values are stored as <param>_bid and <param>_ask (e.g. width_bid, width_ask); 
-    resilience_bid/resilience_ask are stored in seconds. 
+    The per-side values are stored as <param>_bid and <param>_ask (e.g. width_bid, width_ask);
+    resilience_bid/resilience_ask hold the half-lives in seconds, and rho_bid/rho_ask the
+    matching resilience rates rho = ln(2) / half-life, per second (inf = instant, 0 = never).
     depth_bid/depth_ask track the current, possibly depleted, depth;
     depth_bid_full/depth_ask_full keep the original depth.
     """
@@ -67,9 +82,12 @@ class Orderbook:
         self.spread_bid, self.spread_ask = _bid_ask(spread, "spread")
         self.k_bid, self.k_ask = _bid_ask(k, "k")
         resilience_bid, resilience_ask = _bid_ask(resilience, "resilience")
-        # Seconds needed to fully replenish each side (inf = never)
+        # Half-life of each side's depth recovery, in seconds (inf = never)
         self.resilience_bid = _replenish_seconds(resilience_bid)
         self.resilience_ask = _replenish_seconds(resilience_ask)
+        # Resilience rate of each side, per second
+        self.rho_bid = _resilience_rate(self.resilience_bid)
+        self.rho_ask = _resilience_rate(self.resilience_ask)
 
     def reset(self):
         """Restore both sides to full depth, undoing any depletion from earlier trades."""
@@ -84,7 +102,8 @@ class Orderbook:
         print(f"  Width (decimal):   bid={self.width_bid:>15.6f}  ask={self.width_ask:>15.6f}")
         print(f"  Spread (decimal):  bid={self.spread_bid:>15.6f}  ask={self.spread_ask:>15.6f}")
         print(f"  Curvature (k):     bid={self.k_bid:>15.6f}  ask={self.k_ask:>15.6f}")
-        print(f"  Resilience (s):    bid={self.resilience_bid:>15,.1f}  ask={self.resilience_ask:>15,.1f}")
+        print(f"  Half-life (s):     bid={self.resilience_bid:>15,.1f}  ask={self.resilience_ask:>15,.1f}")
+        print(f"  Rho (1/s):         bid={self.rho_bid:>15.6g}  ask={self.rho_ask:>15.6g}")
         print(f"{'=' * 60}\n")
 
     def execute_transaction(self, token_amount, effective_price):
@@ -134,26 +153,32 @@ class Orderbook:
 
     def replenish(self, seconds_elapsed):
         """
-        Replenish orderbook depth on both sides for the time that has passed.
+        Exponentially replenish orderbook depth on both sides for the time that has passed.
 
-        Each side regains the fraction seconds_elapsed / resilience of its full depth
-        (resilience being the time needed to refill completely), capped at full depth.
+        For each side s the missing depth decays at the resilience rate rho^s:
+
+            d_{t+Δ} = d_0 - (d_0 - d_t) * exp(-rho * Δ),   rho = ln(2) / half-life
+
+        Exponential recovery is memoryless, so calling this once per step gives the same
+        depth as applying the formula once from the time of the last trade.
 
         Args:
             seconds_elapsed: Time since the previous replenishment, in seconds
         """
-        fraction_restored_bid = self._fraction_restored(seconds_elapsed, self.resilience_bid)
-        fraction_restored_ask = self._fraction_restored(seconds_elapsed, self.resilience_ask)
-
-        self.depth_bid = min(self.depth_bid + fraction_restored_bid * self.depth_bid_full, self.depth_bid_full)
-        self.depth_ask = min(self.depth_ask + fraction_restored_ask * self.depth_ask_full, self.depth_ask_full)
+        self.depth_bid = self._replenish_side(self.depth_bid, self.depth_bid_full, seconds_elapsed, self.rho_bid)
+        self.depth_ask = self._replenish_side(self.depth_ask, self.depth_ask_full, seconds_elapsed, self.rho_ask)
 
     @staticmethod
-    def _fraction_restored(seconds_elapsed, seconds_to_full):
-        """Fraction of full depth restored in seconds_elapsed, between 0 and 1."""
-        if seconds_to_full == 0:
-            return 1.0  # instant replenishment
-        return min(seconds_elapsed / seconds_to_full, 1.0)
+    def _replenish_side(depth, depth_full, seconds_elapsed, rho):
+        """Depth of one side after seconds_elapsed of exponential recovery toward depth_full."""
+        if seconds_elapsed <= 0 or rho == 0:
+            return depth  # no time passed / never recovers
+        if math.isinf(rho):
+            return depth_full  # instant replenishment
+        gap = (depth_full - depth) * math.exp(-rho * seconds_elapsed)  # remaining d_0 - d
+        if gap <= _FULL_DEPTH_TOLERANCE * depth_full:
+            return depth_full
+        return depth_full - gap
 
     def __repr__(self):
         k_part = "" if (self.k_bid == 1 and self.k_ask == 1) else f", k_bid={self.k_bid}, k_ask={self.k_ask}"

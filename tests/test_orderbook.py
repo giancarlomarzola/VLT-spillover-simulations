@@ -152,18 +152,37 @@ def test_depletion_is_in_quote_currency(orderbook):
 # --- replenish / reset --------------------------------------------------------------
 
 
-def test_replenish_is_linear_and_capped():
+def test_replenish_halves_the_gap_every_half_life():
     book = Orderbook("book", depth=1_000_000, width=0.01, spread=0.001, resilience="100s")
     book.execute_transaction(10_000, PRICE)  # empty the ask
     assert book.depth_ask == pytest.approx(0)
 
-    book.replenish(25)  # a quarter of the time restores a quarter of full depth
-    assert book.depth_ask == pytest.approx(250_000)
-    book.replenish(25)
+    book.replenish(100)  # one half-life restores half of the missing depth
     assert book.depth_ask == pytest.approx(500_000)
-    book.replenish(1_000)  # never above full depth
+    book.replenish(100)  # the next restores half of what is still missing
+    assert book.depth_ask == pytest.approx(750_000)
+    book.replenish(1e6)  # never above full depth, and snapped exactly to it once the gap is negligible
     assert book.depth_ask == 1_000_000
     assert book.depth_bid == 1_000_000
+
+
+def test_replenish_is_memoryless():
+    """Many small steps give the same depth as one step of the same total length."""
+    stepped = Orderbook("book", depth=1_000_000, width=0.01, spread=0.001, resilience="30s")
+    single = Orderbook("book", depth=1_000_000, width=0.01, spread=0.001, resilience="30s")
+    for book in (stepped, single):
+        book.execute_transaction(7_000, PRICE)
+    for _ in range(45):
+        stepped.replenish(1)
+    single.replenish(45)
+    assert stepped.depth_ask == pytest.approx(single.depth_ask)
+
+
+def test_rho_is_ln2_over_half_life():
+    book = Orderbook("book", depth=500, width=0.02, spread=0.001, resilience=("1min", None))
+    assert book.rho_bid == pytest.approx(math.log(2) / 60)
+    assert book.rho_ask == 0
+    assert Orderbook("book", depth=500, width=0.02, spread=0.001).rho_bid == math.inf
 
 
 def test_zero_resilience_replenishes_instantly(orderbook):
@@ -183,7 +202,7 @@ def test_sides_replenish_at_their_own_rate():
     book = Orderbook("book", depth=1_000_000, width=0.01, spread=0.001, resilience=("100s", None))
     book.execute_transaction(-10_000, PRICE)
     book.execute_transaction(10_000, PRICE)
-    book.replenish(50)
+    book.replenish(100)
     assert book.depth_bid == pytest.approx(500_000)
     assert book.depth_ask == pytest.approx(0)
 

@@ -42,7 +42,7 @@ baseline_depth = 250_000_000
 baseline_width = 0.01
 baseline_spread = 0.005 / 100
 baseline_k = 0.3
-baseline_resilience = 0  # time to fully replenish the orderbook
+baseline_resilience = 0  # half-life of orderbook depth recovery; 0=instant
 
 baseline_orderbook = Orderbook(
     name="baseline",
@@ -81,21 +81,21 @@ spread_orderbook = Orderbook(
 )
 
 shape_orderbook = Orderbook(
-    name="shape k3",
+    name="shape k2",
     depth=baseline_depth,
     width=baseline_width,
     spread=baseline_spread,
-    k=3,
+    k=2,
     resilience=baseline_resilience,
 )
 
 resilience_orderbook = Orderbook(
-    name="resilience 1h",
+    name="resilience 15min",
     depth=baseline_depth,
     width=baseline_width,
     spread=baseline_spread,
     k=baseline_k,
-    resilience=pd.Timedelta("1h"),
+    resilience=pd.Timedelta("15min"),
 )
 
 # None = no orderbook: rebalances have no price impact (the reference run)
@@ -122,7 +122,7 @@ time_step = "5min"
 # Results are saved one file per seed in data/outputs/GBM_simulations/<experiment>/iterations/, and running
 # this script again uses the next unused seeds, adding to what is already there.
 # simulation_from_gbm_table.py builds the table of averages from those files.
-experiment = "nearest boundary UP and DOWN"  # use a new name/delete the folder when the setup above changes
+experiment = "exp_recovery_UPDOWN"  # use a new name/delete the folder when the setup above changes
 n_iterations = 1_000
 n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
 
