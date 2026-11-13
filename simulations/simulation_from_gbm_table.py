@@ -18,7 +18,8 @@ from openpyxl.utils import get_column_letter
 from core.simulation import flag_feedback_loops
 from utils.paths import GBM_SIMULATIONS
 
-experiment = "exp_recovery_5min_baseline_rho"  # folder in data/outputs/GBM_simulations/ written by simulation_from_gbm.py
+# folder in data/outputs/GBM_simulations/ written by simulation_from_gbm.py
+experiment = "exp_recovery_5min_baseline_rho"  
 
 experiment_dir = GBM_SIMULATIONS / experiment
 results_dir = experiment_dir / "iterations"  # one parquet file per seed
