@@ -215,7 +215,7 @@ summary_lines = [
     r"    \toprule",
     r"    & & \textbf{Trade} & \multicolumn{2}{c}{\textbf{Impact (bps)}} & \multicolumn{3}{c}{\textbf{Spillover}}\\",
     r"    \cmidrule(lr){4-5}\cmidrule(lr){6-8}",
-    r"    \textbf{Order book} & \textbf{Resets} & (\$k) & Mean $|I|$ & Max buy"
+    r"    \textbf{Order book} & \textbf{Resets} & (\$k) & Mean $|\gamma_t|$ & Max buy"
     r" & Final (bps) & Highest (bps) & Largest (\%)\\",
     r"    \midrule",
 ]
@@ -239,7 +239,7 @@ means = runs.groupby(["orderbook", "vol"]).agg(
     final=("final_price_deviation", "mean"), resets=("n_rebalances", "mean")
 )
 # 95% confidence intervals of the means, from the standard deviations across seeds and the
-# number of runs per cell on the "stdev" sheet written by simulation_from_gbm_table.py.
+# number of runs per cell on the "stdev" sheet written by simulation_from_gbm.py.
 # Normal approximation: half-width 1.96 * std / sqrt(n), with n = 1000 runs per cell.
 stdevs = pd.read_excel(
     GBM_SIMULATIONS / experiment / "summary_table.xlsx", sheet_name="stdev", index_col=[0, 1]
