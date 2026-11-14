@@ -43,7 +43,7 @@ gbm_down  = VLETP( # in line with total for products on TSLA/NVDA etc
 baseline_depth = 250_000_000
 baseline_width = 0.01
 baseline_spread = 0.005 / 100
-baseline_k = 0.3
+baseline_k = 0.5
 baseline_resilience = pd.Timedelta("5min")  # half-life of orderbook depth recovery; 0=instant
 
 baseline_orderbook = Orderbook(
@@ -82,12 +82,21 @@ spread_orderbook = Orderbook(
     resilience=baseline_resilience,
 )
 
-shape_orderbook = Orderbook(
-    name="shape k2",
+shape1_orderbook = Orderbook(
+    name="shape k1",
     depth=baseline_depth,
     width=baseline_width,
     spread=baseline_spread,
-    k=2,
+    k=1,
+    resilience=baseline_resilience,
+)
+
+shape2_orderbook = Orderbook(
+    name="shape k1_5",
+    depth=baseline_depth,
+    width=baseline_width,
+    spread=baseline_spread,
+    k=1.5,
     resilience=baseline_resilience,
 )
 
@@ -107,7 +116,8 @@ orderbooks = [
     depth_orderbook,
     width_orderbook,
     spread_orderbook,
-    shape_orderbook,
+    shape1_orderbook,
+    shape2_orderbook,
     resilience_orderbook,
 ]
 
@@ -115,16 +125,16 @@ orderbooks = [
 # Price process: raw GBM paths, indexed by time elapsed since the start.
 volatilities = [0.2, 0.4, 0.6, 0.8, 1.0]
 n_prices = 100_000
-start_price = 50_000
+start_price = 1000
 mu = 0.0
-time_step = "5min"
+time_step = "500ms"
 
 # Iterations: each one takes a new seed and runs every (volatility, orderbook) pair on it.
 # Within an iteration every path shares the seed, so they differ only in volatility.
 # Results are saved one file per seed in data/outputs/GBM_simulations/<experiment>/iterations/, and running
 # this script again uses the next unused seeds, adding to what is already there.
 # simulation_from_gbm_table.py builds the table of averages from those files.
-experiment = "exp_recovery_5min_baseline_rho"  # use a new name/delete the folder when the setup above changes
+experiment = "500ms_2kappas"  # use a new name/delete the folder when the setup above changes
 n_iterations = 1_000
 n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
 
