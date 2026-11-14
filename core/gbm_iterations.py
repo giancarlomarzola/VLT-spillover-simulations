@@ -36,7 +36,7 @@ def simulate_seed(
     mu: float,
     time_step: str,
     keep_results: bool = False,
-) -> tuple[pd.DataFrame, dict]:
+) -> tuple[pd.DataFrame, dict[tuple[str, str], pd.DataFrame]]:
     """
     Run one iteration: a GBM path per volatility, all drawn from `seed` so they differ only
     in volatility, each simulated against every orderbook (None = no orderbook).
@@ -51,7 +51,7 @@ def simulate_seed(
             results["vol_60", "depth"]. Empty unless keep_results.
     """
     rows = []
-    results = {}
+    results: dict[tuple[str, str], pd.DataFrame] = {}
     for sigma in volatilities:
         price_label = f"vol_{round(sigma * 100)}"
         prices = generate_gbm_price_series(
