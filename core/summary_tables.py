@@ -1,5 +1,5 @@
 """
-Tables of averages and standard deviations for the runs saved by simulation_from_gbm.py.
+Tables of averages and standard deviations for the runs saved by the simulations/run_*_experiment.py scripts.
 
 Reads every per-seed file in <experiment_dir>/iterations/ and averages each (price series,
 orderbook) cell across seeds, with a second table of the standard deviations across seeds.
@@ -34,7 +34,7 @@ def build_summary_tables(experiment_dir: Path, show: bool = True) -> tuple[pd.Da
     results_dir = experiment_dir / "iterations"  # one parquet file per seed
     paths = sorted(results_dir.glob("seed_*.parquet"))
     if not paths:
-        raise FileNotFoundError(f"No saved iterations in {results_dir}; run simulation_from_gbm.py first")
+        raise FileNotFoundError(f"No saved iterations in {results_dir}; run its run_*_experiment.py script first")
 
     # One row per (seed, price series, orderbook) run
     runs = pd.concat([pd.read_parquet(path) for path in paths], ignore_index=True)

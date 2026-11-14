@@ -10,8 +10,9 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATA_RAW = DATA_DIR / "raw"
 DATA_PROCESSED = DATA_DIR / "processed"
 DATA_OUTPUTS = DATA_DIR / "outputs"
-GBM_SIMULATIONS = DATA_OUTPUTS / "GBM_simulations"  # one folder per simulation_from_gbm.py experiment
-BOOTSTRAP_SIMULATIONS = DATA_OUTPUTS / "BTC_bootstrap_simulations"  # one folder per simulation_bootstrapped_btc.py experiment
+# One folder per experiment, written by simulations/run_gbm_experiment.py / run_btc_bootstrap_experiment.py
+GBM_SIMULATIONS = DATA_OUTPUTS / "GBM_simulations"
+BOOTSTRAP_SIMULATIONS = DATA_OUTPUTS / "BTC_bootstrap_simulations"
 
 # Output directories
 FIGURES_DIR = DATA_OUTPUTS / "figures"

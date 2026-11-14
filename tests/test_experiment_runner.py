@@ -1,8 +1,16 @@
 import pandas as pd
 import pytest
 
-from core.gbm_iterations import run_iteration, saved_seeds, seed_path, simulate_seed
-from core.price_process import generate_gbm_price_series
+from core.experiment_runner import (
+    check_or_write_config,
+    experiment_config,
+    load_setup,
+    run_iteration,
+    saved_seeds,
+    seed_path,
+    simulate_seed,
+)
+from core.gbm_price_generator import GBMPriceGenerator, generate_gbm_price_series
 from core.simulation import run_simulation, summarise_run
 
 
@@ -12,11 +20,9 @@ def setup(up_product, orderbook):
     return {
         "vletps": up_product,
         "orderbooks": [None, orderbook],
-        "volatilities": [0.5, 5.0],
-        "n_prices": 500,
-        "start_price": 100,
-        "mu": 0.0,
-        "time_step": "1h",
+        "price_generator": GBMPriceGenerator(
+            volatilities=[0.5, 5.0], n_prices=500, start_price=100, mu=0.0, time_step="1h"
+        ),
     }
 
 
@@ -46,7 +52,7 @@ def test_simulate_seed_is_reproducible_and_seed_dependent(setup):
 
 
 def test_wipeout_times_are_elapsed_times_even_without_a_wipeout(setup):
-    setup["volatilities"] = [0.01]  # too calm to wipe the product out
+    setup["price_generator"].volatilities = [0.01]  # too calm to wipe the product out
     summary, _ = simulate_seed(0, **setup)
     assert summary["wipeout_time_UP"].isna().all()
     assert summary["wipeout_time_UP"].dtype.kind == "m"
@@ -64,3 +70,25 @@ def test_run_iteration_saves_the_summary(setup, tmp_path):
 
 def test_saved_seeds_is_empty_for_an_empty_folder(tmp_path):
     assert saved_seeds(tmp_path) == set()
+
+
+@pytest.fixture
+def gbm_generator():
+    return GBMPriceGenerator(volatilities=[0.5, 5.0], n_prices=300, start_price=100, mu=0.0, time_step="1h")
+
+
+def test_load_setup_rebuilds_the_setup_that_was_saved(tmp_path, up_product, down_product, orderbook, gbm_generator):
+    config = experiment_config([up_product, down_product], [None, orderbook], gbm_generator)
+    check_or_write_config(tmp_path, config)
+    setup = load_setup(tmp_path)
+    assert experiment_config(**setup) == config
+    original, _ = simulate_seed(4, [up_product, down_product], [None, orderbook], gbm_generator)
+    rebuilt, _ = simulate_seed(4, **setup)
+    pd.testing.assert_frame_equal(original, rebuilt)
+
+
+def test_a_different_setup_is_refused(tmp_path, up_product, orderbook, gbm_generator):
+    check_or_write_config(tmp_path, experiment_config(up_product, [orderbook], gbm_generator))
+    gbm_generator.mu = 0.1
+    with pytest.raises(ValueError, match="differs"):
+        check_or_write_config(tmp_path, experiment_config(up_product, [orderbook], gbm_generator))

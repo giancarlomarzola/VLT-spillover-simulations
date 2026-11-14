@@ -1,4 +1,4 @@
-# Plot the full 2021-05-19 BTC dataset (not just the 2h analysis window used in test_bench.py),
+# Plot the full 2021-05-19 BTC dataset (not just the 2h analysis window used in legacy_scripts/test_bench.py),
 # resampled from the full-period tick data.
 
 import plotly.graph_objects as go
@@ -43,7 +43,7 @@ fig.add_trace(
     go.Scattergl(x=x, y=data["leverageDOWN"], name="Leverage DOWN", line=dict(color="#EF553B")), row=3, col=1
 )
 
-# Shade the 2h analysis window used by test_bench.py for reference
+# Shade the 2h analysis window used by legacy_scripts/test_bench.py for reference
 for row in (1, 2, 3):
     fig.add_vrect(x0=START_TIME, x1=END_TIME, fillcolor="grey", opacity=0.15, line_width=0, row=row, col=1)
 

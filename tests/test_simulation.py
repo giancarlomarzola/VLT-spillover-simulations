@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from core.gbm_price_generator import generate_gbm_price_series
 from core.orderbook import Orderbook
-from core.price_process import generate_gbm_price_series
 from core.simulation import MARKET_COLUMNS, PRODUCT_VARS, _longest_run, run_simulation, summarise_run
 from core.variable_leverage_product import VLETP
 

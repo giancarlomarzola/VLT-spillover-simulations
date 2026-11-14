@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from core.gbm_price_generator import SECONDS_PER_YEAR
 from core.orderbook import Orderbook
-from core.price_process import SECONDS_PER_YEAR
 from core.variable_leverage_product import VLETP
 
 # VLETP.state() key -> prefix of the per-product output column, e.g. "nav_BTCUP"

@@ -2,7 +2,7 @@
 Figures for the QuantMinds presentation, saved to data/outputs/figures/quant_minds/.
 
 1. Order book scenarios: one plot per order book, drawn from its parameters.
-2. Simulation outputs, from the experiment saved by simulation_from_gbm.py:
+2. Simulation outputs, from the GBM experiment saved by run_gbm_experiment.py:
      gbm_updown_summary.png: mean final spillover and resets by volatility and order book.
      gbm_seed<seed>_vol<vol>_price.png / _leverage.png: one path, re-simulated in full here.
    It also prints the numbers in the deck's summary table.
@@ -15,9 +15,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from core.gbm_iterations import simulate_seed
+from core.experiment_runner import load_setup, simulate_seed
 from core.orderbook import Orderbook
-from simulations.simulation_from_gbm import gbm_down, gbm_up, orderbooks, setup
 from utils.paths import FIGURES_DIR, GBM_SIMULATIONS
 from utils.plotting import plot_orderbooks
 
@@ -121,7 +120,7 @@ for orderbook in orderbooks_list:
 # 2. Simulation outputs
 # ========================================
 
-experiment = "1s_2kappas"  # folder in data/outputs/GBM_simulations/ written by simulation_from_gbm.py
+experiment = "1s_2kappas"  # folder in data/outputs/GBM_simulations/ written by run_gbm_experiment.py
 single_path_vol = "vol_100"  # resets are too rare at lower volatilities to show one path
 single_path_seed = 579  # Cherry-picked to my hearts content for illustrative purposes
 
@@ -149,7 +148,7 @@ book_styles = {
 results_dir = GBM_SIMULATIONS / experiment / "iterations"
 paths = sorted(results_dir.glob("seed_*.parquet"))
 if not paths:
-    raise FileNotFoundError(f"No saved iterations in {results_dir}; run simulation_from_gbm.py first")
+    raise FileNotFoundError(f"No saved iterations in {results_dir}; run run_gbm_experiment.py first")
 runs = pd.concat([pd.read_parquet(path) for path in paths], ignore_index=True)
 runs["vol"] = runs["price_series"].str.removeprefix("vol_").astype(int)
 runs["active"] = runs["n_rebalances"] > 0  # paths with at least one reset
@@ -239,7 +238,7 @@ means = runs.groupby(["orderbook", "vol"]).agg(
     final=("final_price_deviation", "mean"), resets=("n_rebalances", "mean")
 )
 # 95% confidence intervals of the means, from the standard deviations across seeds and the
-# number of runs per cell on the "stdev" sheet written by simulation_from_gbm.py.
+# number of runs per cell on the "stdev" sheet written by run_gbm_experiment.py.
 # Normal approximation: half-width 1.96 * std / sqrt(n), with n = 1000 runs per cell.
 stdevs = pd.read_excel(
     GBM_SIMULATIONS / experiment / "summary_table.xlsx", sheet_name="stdev", index_col=[0, 1]
@@ -273,15 +272,11 @@ with plt.rc_context(output_style):
 
 # ---------- one path, re-simulated in full ----------
 single_path_books = ["baseline", "depth 0.5x", "spread 2x"]
-summary, results = simulate_seed(
-    single_path_seed,
-    **{
-        **setup,
-        "volatilities": [int(single_path_vol.removeprefix("vol_")) / 100],
-        "orderbooks": [ob for ob in orderbooks if ob is not None and ob.name in single_path_books],
-    },
-    keep_results=True,
-)
+setup = load_setup(GBM_SIMULATIONS / experiment)  # the setup the saved results were run with
+gbm_up, gbm_down = setup["vletps"]
+setup["price_generator"].volatilities = [int(single_path_vol.removeprefix("vol_")) / 100]
+setup["orderbooks"] = [ob for ob in setup["orderbooks"] if ob is not None and ob.name in single_path_books]
+summary, results = simulate_seed(single_path_seed, **setup, keep_results=True)
 # The re-run must reproduce the saved results, or the setup has changed since the experiment ran
 saved = runs[(runs["seed"] == single_path_seed) & (runs["price_series"] == single_path_vol)].set_index("orderbook")
 for _, row in summary.iterrows():

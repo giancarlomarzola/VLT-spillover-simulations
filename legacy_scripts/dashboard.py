@@ -1,7 +1,7 @@
 """
 VLT Simulation Dashboard
 Run:
-streamlit run simulations/dashboard.py
+streamlit run legacy_scripts/dashboard.py
 """
 
 import json
