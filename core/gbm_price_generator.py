@@ -8,6 +8,8 @@ Every price generator (this one and core.bootstrap_price_generator.BootstrapPric
 the same interface, which is all core.experiment_runner relies on:
     paths(seed): list of (label, prices) pairs, the price series of one iteration. The label names the
         series in the results (the `price_series` column), e.g. "vol_60" or "btc_bootstrap_60s".
+        `seed` is the iteration number; the generator's master_seed turns it into the iteration's
+        random stream (see core.seeding).
     n_paths: number of paths per iteration.
     config(): the settings that define the paths, saved to the experiment's config.json.
     describe(): one line for the progress printout.
@@ -20,6 +22,8 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+
+from core.seeding import iteration_seed
 
 SECONDS_PER_YEAR = 365 * 24 * 60 * 60  # markets trade around the clock
 
@@ -37,7 +41,7 @@ def generate_gbm_price_series(n_prices, start_price=100.0, mu=0.0, sigma=0.2, ti
         sigma: Annualised volatility
         time_step: Time between consecutive prices, as a pandas frequency string or
             Timedelta (e.g. "1s", "500ms", "1min"). Converted to years (365-day year) for dt.
-        seed: Optional seed for reproducibility
+        seed: Optional seed for reproducibility (an int or a np.random.SeedSequence)
 
     Returns:
         pd.Series: n_prices simulated prices, indexed by time elapsed since the start of
@@ -71,6 +75,8 @@ class GBMPriceGenerator:
 
     volatilities: annualised volatilities, one path each (labelled "vol_<percent>", e.g. "vol_60").
     n_prices: prices per path, including the start price.
+    master_seed: the seed every iteration's random stream is derived from (see core.seeding).
+        None = the iteration number is used as the seed directly (experiments run before master seeds).
     """
 
     volatilities: list[float]
@@ -78,12 +84,14 @@ class GBMPriceGenerator:
     start_price: float = 100.0
     mu: float = 0.0
     time_step: str = "1s"
+    master_seed: int | None = None
 
     @property
     def n_paths(self) -> int:
         return len(self.volatilities)
 
     def paths(self, seed: int) -> list[tuple[str, pd.Series]]:
+        rng_seed = iteration_seed(self.master_seed, seed)
         return [
             (
                 f"vol_{round(sigma * 100)}",
@@ -93,20 +101,23 @@ class GBMPriceGenerator:
                     mu=self.mu,
                     sigma=sigma,
                     time_step=self.time_step,
-                    seed=seed,
+                    seed=rng_seed,
                 ),
             )
             for sigma in self.volatilities
         ]
 
     def config(self) -> dict:
-        return {
+        config = {
             "volatilities": self.volatilities,
             "n_prices": self.n_prices,
             "start_price": self.start_price,
             "mu": self.mu,
             "time_step": self.time_step,
         }
+        if self.master_seed is not None:  # left out otherwise, so older experiments' config.json still match
+            config["master_seed"] = self.master_seed
+        return config
 
     def describe(self) -> str:
         vols = ", ".join(f"{sigma:.0%}" for sigma in self.volatilities)

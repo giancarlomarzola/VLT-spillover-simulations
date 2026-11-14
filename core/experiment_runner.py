@@ -15,7 +15,9 @@ of the first run saved in it, and load_setup rebuilds that setup to re-run any o
 
 One iteration = one seed: the seed draws the iteration's price paths from the price generator
 (core.gbm_price_generator, core.bootstrap_price_generator), and each path is simulated against every
-orderbook. These functions live in a module (rather than in the scripts that use them) so that worker
+orderbook. The seeds are the iteration numbers 0, 1, 2, ...; a generator with a master_seed turns
+iteration i into child i of SeedSequence(master_seed) (core.seeding), so the whole experiment is
+reproducible from its config.json. These functions live in a module (rather than in the scripts that use them) so that worker
 processes can import them, which is what lets iterations run in parallel.
 """
 
@@ -284,6 +286,7 @@ def load_setup(experiment_dir: Path, include_no_orderbook: bool = True) -> dict:
             start_price=process["start_price"],
             outages=[tuple(window) for window in process["outages"]],
             returns_path=experiment_dir / "returns.parquet",
+            master_seed=process.get("master_seed"),
         )
     else:
         price_generator = GBMPriceGenerator(
@@ -292,5 +295,6 @@ def load_setup(experiment_dir: Path, include_no_orderbook: bool = True) -> dict:
             start_price=process["start_price"],
             mu=process["mu"],
             time_step=process["time_step"],
+            master_seed=process.get("master_seed"),
         )
     return {"vletps": vletps, "orderbooks": orderbooks, "price_generator": price_generator}

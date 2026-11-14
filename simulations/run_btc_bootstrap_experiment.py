@@ -3,6 +3,8 @@ BTC bootstrap experiment: the UP/DOWN products on price paths block-bootstrapped
 returns of 2021-05-19, against every orderbook.
 
 Each iteration takes a new seed, draws one bootstrapped path from it and runs every orderbook on it.
+The seeds are the iteration numbers 0..n_iterations-1, and iteration i draws from child i of
+SeedSequence(master_seed) (see core.seeding), so the whole experiment is reproducible from master_seed.
 Results are saved one file per seed in data/outputs/BTC_bootstrap_simulations/<experiment>/iterations/,
 next to the pool of returns they were drawn from (returns.parquet), and summary_table.xlsx in the
 same folder averages them across seeds (see core.experiment_runner).
@@ -54,11 +56,12 @@ price_generator = BootstrapPriceGenerator(
         ("2021-05-19 19:27", "2021-05-19 19:34"),
     ],
     returns_path=experiment_dir / "returns.parquet",  # built from the tick data on the first run
+    master_seed=20210519,  # every iteration's random stream is derived from it (saved to config.json)
 )
 vletps = vletp_pair("BTC")
 orderbooks = orderbook_sensitivities()
 
-n_iterations = 1_000
+n_iterations = 100
 n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
 
 # The guard keeps the worker processes, which re-import this file, from starting runs of their own

@@ -14,6 +14,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from core.seeding import iteration_seed
+
 
 def block_starts(timestamps, block_length):
     """
@@ -58,7 +60,7 @@ def generate_block_bootstrap_price_series(
         start_price: Initial price S_0
         time_step: Time between consecutive prices, as a pandas frequency string or Timedelta. Should match
             the spacing of log_returns; it only sets the index of the output.
-        seed: Optional seed for reproducibility
+        seed: Optional seed for reproducibility (an int or a np.random.SeedSequence)
 
     Returns:
         pd.Series: n_prices prices, indexed by time elapsed since the start of the simulation
@@ -117,6 +119,8 @@ class BootstrapPriceGenerator:
     returns_path: where the pool of returns is saved (built from the tick data by prepare() if missing).
         Kept next to the results it was used for, as it is part of the experiment's setup.
     path_length / block: durations, e.g. "1h" / "60s"; both must be multiples of time_step.
+    master_seed: the seed every iteration's random stream is derived from (see core.seeding).
+        None = the iteration number is used as the seed directly.
     """
 
     currency: str
@@ -126,6 +130,7 @@ class BootstrapPriceGenerator:
     start_price: float
     returns_path: Path
     outages: list[tuple[str, str]] = field(default_factory=list)
+    master_seed: int | None = None
 
     @property
     def n_prices(self) -> int:
@@ -152,12 +157,12 @@ class BootstrapPriceGenerator:
             block_length=self.block_length,
             start_price=self.start_price,
             time_step=self.time_step,
-            seed=seed,
+            seed=iteration_seed(self.master_seed, seed),
         )
         return [(self.label, prices)]
 
     def config(self) -> dict:
-        return {
+        config = {
             "type": "moving block bootstrap",
             "currency": self.currency,
             "time_step": self.time_step,
@@ -168,6 +173,9 @@ class BootstrapPriceGenerator:
             "block": self.block,
             "block_length": self.block_length,
         }
+        if self.master_seed is not None:  # left out otherwise, so older experiments' config.json still match
+            config["master_seed"] = self.master_seed
+        return config
 
     def describe(self) -> str:
         return (

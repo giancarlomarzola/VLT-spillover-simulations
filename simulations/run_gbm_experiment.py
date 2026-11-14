@@ -32,6 +32,8 @@ price_generator = GBMPriceGenerator(
     start_price=100,
     mu=0.0,
     time_step="1s",
+    # No master_seed: 1s_2kappas was run with the iteration number as the seed. Set one (e.g.
+    # master_seed=12345) for a new experiment, so its seeds are derived from it (see core.seeding).
 )
 vletps = vletp_pair("GBM")
 orderbooks = orderbook_sensitivities()
