@@ -67,7 +67,7 @@ def test_generator_resamples_the_saved_returns(tmp_path):
     returns = pd.Series(np.random.default_rng(0).normal(0, 1e-4, len(index)), index=index, name="log_return")
     returns.to_frame().to_parquet(tmp_path / "returns.parquet")
     generator = BootstrapPriceGenerator(
-        currency="btc", time_step="100ms", path_length="10s", block="1s", start_price=40_000,
+        currency="btc", time_step="100ms", n_prices=101, block="1s", start_price=40_000,
         returns_path=tmp_path / "returns.parquet",
     )
     generator.prepare()  # the file exists, so nothing is rebuilt

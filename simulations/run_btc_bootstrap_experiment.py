@@ -1,5 +1,6 @@
 """
-BTC bootstrap experiment: the UP/DOWN products on price paths block-bootstrapped from the BTC
+BTC bootstrap experiment: BTCUP and BTCDOWN (BTC-sized products and orderbooks, see
+simulations.products_and_orderbooks) on price paths block-bootstrapped from the BTC
 returns of 2021-05-19, against every orderbook.
 
 Each iteration takes a new seed, draws one bootstrapped path from it and runs every orderbook on it.
@@ -23,7 +24,7 @@ import os
 
 from core.bootstrap_price_generator import BootstrapPriceGenerator
 from core.experiment_runner import run_experiment
-from simulations.products_and_orderbooks import orderbook_sensitivities, vletp_pair
+from simulations.products_and_orderbooks import btc_orderbooks, btc_vletps
 from utils.paths import BOOTSTRAP_SIMULATIONS
 
 experiment = "1s_40h_block60s"
@@ -58,8 +59,8 @@ price_generator = BootstrapPriceGenerator(
     returns_path=experiment_dir / "returns.parquet",  # built from the tick data on the first run
     master_seed=20210519,  # every iteration's random stream is derived from it (saved to config.json)
 )
-vletps = vletp_pair("BTC")
-orderbooks = orderbook_sensitivities()
+vletps = btc_vletps()  # BTCUP (40M) and BTCDOWN (20M), sized like the real products
+orderbooks = btc_orderbooks()  # baseline depth 50M
 
 n_iterations = 1_000
 n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
@@ -78,7 +79,7 @@ from utils.paths import BOOTSTRAP_SIMULATIONS
 from utils.plotting import plot_prices, plot_leverage, plot_orderbook_depth
 
 seed = 42  # the N in data/outputs/BTC_bootstrap_simulations/<experiment>/iterations/seed_0000NN.parquet
-setup = load_setup(BOOTSTRAP_SIMULATIONS / "100ms_1h_block60s")
+setup = load_setup(BOOTSTRAP_SIMULATIONS / "1s_40h_block60s_btc_sized")
 summary, results = simulate_seed(seed, **setup, keep_results=True)
 
 r = results["btc_bootstrap_60s", "baseline"]

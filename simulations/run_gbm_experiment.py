@@ -20,7 +20,7 @@ import os
 
 from core.experiment_runner import run_experiment
 from core.gbm_price_generator import GBMPriceGenerator
-from simulations.products_and_orderbooks import orderbook_sensitivities, vletp_pair
+from simulations.products_and_orderbooks import tsla_orderbooks, tsla_vletps
 from utils.paths import GBM_SIMULATIONS
 
 experiment = "1s_2kappas"
@@ -34,8 +34,8 @@ price_generator = GBMPriceGenerator(
     time_step="1s",
     master_seed=20210519,
 )
-vletps = vletp_pair("GBM")
-orderbooks = orderbook_sensitivities()
+vletps = tsla_vletps("GBM")  # TSLA-sized products, named GBM_UP and GBM_DOWN
+orderbooks = tsla_orderbooks()
 
 n_iterations = 1_000
 n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
