@@ -6,7 +6,7 @@ from core.orderbook import Orderbook
 from utils.paths import FIGURES_DIR
 from utils.plotting import plot_orderbooks
 
-save_plots = False
+save_plots = True
 
 
 # ========================================
@@ -29,7 +29,7 @@ baseline_orderbook = Orderbook(
 )
 
 depth_orderbook = Orderbook(
-    name="depth 0.5x",
+    name="depth 0_5x",
     depth=0.5 * baseline_depth,
     width=baseline_width,
     spread=baseline_spread,
