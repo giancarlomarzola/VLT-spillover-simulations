@@ -434,7 +434,8 @@ def plot_orderbooks(
             up to 2 columns if rows is not given either.
         show_parameters: Whether to print each orderbook's parameters (depth, width,
             spread and, if not 1, k) under its name. False = name only.
-        title: Title above all panels (optional)
+        title: With one orderbook, replaces the panel title (the orderbook's name); "" = no
+            title. With several, a title above all panels. None = orderbook names only.
         figsize: Figure size (width, height) in inches. None = scaled to the grid.
         x_limit: Range of the x axis, in % price deviation. A number = from -x_limit to
             x_limit, a (min, max) tuple = that range. None = 1.2x the widest orderbook.
@@ -464,6 +465,7 @@ def plot_orderbooks(
     x_min, x_max = x_limit if isinstance(x_limit, (tuple, list)) else (-x_limit, x_limit)
     y_min, y_max = y_limit if isinstance(y_limit, (tuple, list)) else (0, y_limit)
     x = np.linspace(x_min, x_max, 1000)
+    single_title = len(orderbooks) == 1
 
     for ax, ob in zip(axes, orderbooks):
         y = _orderbook_depth_curve(x, ob)
@@ -489,7 +491,10 @@ def plot_orderbooks(
         )
         if ob.k_bid != 1 or ob.k_ask != 1:
             parameters += f", k={_format_side(ob.k_bid, ob.k_ask)}"
-        ax.set_title(f"{ob.name}\n{parameters}" if show_parameters else ob.name, fontsize=13)
+        # A single panel takes the given title in place of the orderbook's name
+        name = title if single_title and title is not None else ob.name
+        panel_title = "\n".join(filter(None, (name, parameters if show_parameters else None)))
+        ax.set_title(panel_title, fontsize=13)
         ax.set_xlabel("Price deviation (%)", fontsize=12)
         ax.set_xlim(x_min, x_max)
         ax.set_ylabel("Depth (USD millions)", fontsize=12)
@@ -501,7 +506,7 @@ def plot_orderbooks(
     for ax in axes[len(orderbooks) :]:
         ax.axis("off")
 
-    if title:
+    if title and not single_title:
         fig.suptitle(title, fontsize=17)
     if show_legend:
         # Collect across panels: the baseline's own panel has no reference line
