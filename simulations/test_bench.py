@@ -1,8 +1,8 @@
 # Imports
 from core.orderbook import Orderbook
-from core.price_spillover_simulations import run_simulation
-from utils.data_loader import END_TIME, START_TIME, load_data
-from utils.legacy_plotting import plot_orderbook_depth, plot_results
+from core.simulation import run_simulation
+from utils.data_loader import END_TIME, START_TIME, load_data, products_from_data
+from utils.plotting import plot_leverage, plot_orderbook_depth, plot_prices
 
 # Parameters
 currency = "btc"
@@ -23,9 +23,8 @@ tight, broad = 0.5 / 10_000, 5 / 10_000
 
 # Display options
 show_hover_info = True
-show_markers = False
 plot_resample_freq = None
-leverage_timing = "Before Rebalance"  # 'Before Rebalance'
+leverage_after_rebalance = False  # False = leverage before each step's rebalance
 
 
 # Orderbooks
@@ -80,20 +79,17 @@ print(f"Loading {currency.upper()} at {frequency} frequency...")
 binance_data = load_data(currency, start_time, end_time, frequency)
 print(f"Loaded {len(binance_data)} rows")
 
+# Products (UP and DOWN, seeded from the issuer holdings at the start of the window)
+products = products_from_data(binance_data, currency, lambda_lower, lambda_upper, lambda_target)
+prices = binance_data.set_index("timestamp")["price"]
+
 # Simulation
 results = {}
 
 for orderbook in orderbooks:
     orderbook_name = orderbook.name if orderbook is not None else "No Orderbook"
     print(f"Running simulation for {orderbook_name}")
-    result = run_simulation(
-        lambda_target=lambda_target,
-        lambda_upper=lambda_upper,
-        lambda_lower=lambda_lower,
-        orderbook=orderbook,
-        prepared_data=binance_data,
-        timestamps=binance_data["timestamp"].values,
-    )
+    result = run_simulation(products, orderbook, prices)
     results[orderbook_name] = result
 
 # Plot all simulations
@@ -101,18 +97,19 @@ print("Plotting the data")
 title_freq = frequency.replace("min", "min ")
 title_prefix = f"{currency.upper()} {title_freq}"
 
-price_fig, leverage_fig = plot_results(
+price_fig = plot_prices(
     results,
-    market_price=binance_data["price"].values,
-    x_axis=binance_data["timestamp"].values,
-    lambda_upper=lambda_upper,
-    lambda_lower=lambda_lower,
-    show_hover=show_hover_info,
-    show_markers=show_markers,
-    leverage_timing=leverage_timing,
-    title_prefix=title_prefix,
-    currency=currency.upper(),
     resample_freq=plot_resample_freq,
+    show_hover=show_hover_info,
+    title_prefix=title_prefix,
+)
+leverage_fig = plot_leverage(
+    results,
+    products,
+    after_rebalance=leverage_after_rebalance,
+    resample_freq=plot_resample_freq,
+    show_hover=show_hover_info,
+    title_prefix=title_prefix,
 )
 
 price_fig.show()
@@ -123,9 +120,8 @@ print("\nPlotting orderbook depth")
 if any(name != "No Orderbook" for name in results):
     depth_fig = plot_orderbook_depth(
         results,
-        x_axis=binance_data["timestamp"].values,
+        resample_freq=plot_resample_freq,
         show_hover=show_hover_info,
         title_prefix=title_prefix,
-        resample_freq=plot_resample_freq,
     )
     depth_fig.show()

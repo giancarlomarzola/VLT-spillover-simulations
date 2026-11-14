@@ -11,9 +11,9 @@ from pathlib import Path
 import streamlit as st
 
 from core.orderbook import Orderbook
-from core.price_spillover_simulations import run_simulation
-from utils.data_loader import FREQUENCIES, load_data
-from utils.legacy_plotting import plot_orderbook_depth, plot_results, resample_data
+from core.simulation import run_simulation
+from utils.data_loader import FREQUENCIES, load_data, products_from_data
+from utils.plotting import plot_leverage, plot_orderbook_depth, plot_prices
 
 
 def frequency_to_seconds(freq):
@@ -64,7 +64,6 @@ def save_config(
     lambda_upper,
     lambda_lower,
     show_hover,
-    show_markers,
     leverage_timing,
     include_baseline,
     k_curvature,
@@ -80,7 +79,6 @@ def save_config(
         "lambda_upper": lambda_upper,
         "lambda_lower": lambda_lower,
         "show_hover": show_hover,
-        "show_markers": show_markers,
         "leverage_timing": leverage_timing,
         "include_baseline": include_baseline,
         "k_curvature": k_curvature,
@@ -99,7 +97,6 @@ def save_as_defaults(
     lambda_upper,
     lambda_lower,
     show_hover,
-    show_markers,
     leverage_timing,
     include_baseline,
     k_curvature,
@@ -115,7 +112,6 @@ def save_as_defaults(
         "lambda_upper": lambda_upper,
         "lambda_lower": lambda_lower,
         "show_hover": show_hover,
-        "show_markers": show_markers,
         "leverage_timing": leverage_timing,
         "include_baseline": include_baseline,
         "k_curvature": k_curvature,
@@ -215,11 +211,6 @@ with st.sidebar:
         help="Use 'raw' to show all data points. Only shows resample frequencies coarser than simulation frequency.",
     )
     st.session_state.plot_resample_freq = plot_resample_freq
-
-    default_show_markers = (saved_config.get("show_markers") if saved_config else None) or (
-        saved_defaults.get("show_markers") if saved_defaults else True
-    )
-    show_markers = st.checkbox("Show markers on lines", value=default_show_markers)
 
     default_leverage_timing = (saved_config.get("leverage_timing") if saved_config else None) or (
         saved_defaults.get("leverage_timing") if saved_defaults else "After Rebalance"
@@ -594,8 +585,7 @@ with st.sidebar:
                 lambda_upper,
                 lambda_lower,
                 show_hover,
-                show_markers,
-                leverage_timing,
+                            leverage_timing,
                 include_baseline,
                 k_curvature,
                 resilience,
@@ -648,8 +638,7 @@ with st.sidebar:
         lambda_upper,
         lambda_lower,
         show_hover,
-        show_markers,
-        leverage_timing,
+            leverage_timing,
         include_baseline,
         k_curvature,
         resilience,
@@ -670,6 +659,10 @@ else:
             try:
                 # Load the analysis window, resampled to the simulation frequency
                 binance_data = load_data(currency, freq=frequency)
+                prices = binance_data.set_index("timestamp")["price"]
+
+                # UP and DOWN products, seeded from the issuer holdings at the start of the window
+                products = products_from_data(binance_data, currency, lambda_lower, lambda_upper, lambda_value)
 
                 results = {}
 
@@ -678,123 +671,30 @@ else:
                 for orderbook_name, orderbook in selected_orderbooks.items():
                     if orderbook is not None:
                         st.write(
-                            f"**{orderbook_name}** → Depth: ({orderbook.depth_bid:,}, {orderbook.depth_ask:,}), \
-                            Width: ({orderbook.width_bid}, {orderbook.width_ask}), \
-                            Spread: ({orderbook.spread_bid}, {orderbook.spread_ask})"
+                            f"**{orderbook_name}** → Depth: ({orderbook.depth_bid:,}, {orderbook.depth_ask:,}), "
+                            f"Width: ({orderbook.width_bid}, {orderbook.width_ask}), "
+                            f"Spread: ({orderbook.spread_bid}, {orderbook.spread_ask})"
                         )
 
-                    result = run_simulation(
-                        lambda_target=lambda_value,
-                        lambda_upper=lambda_upper,
-                        lambda_lower=lambda_lower,
-                        orderbook=orderbook,
-                        prepared_data=binance_data,
-                        timestamps=binance_data["timestamp"].values,
-                    )
-                    results[orderbook_name] = result
+                    results[orderbook_name] = run_simulation(products, orderbook, prices)
 
-                # Resample data for plotting if requested
-                plot_data = binance_data.copy()
-                resampled_results = {}
-                rebalance_magnitudes = {}
-
-                if plot_resample_freq != "raw":
-                    # Resample binance_data (market price and timestamp)
-                    plot_data = resample_data(plot_data, plot_resample_freq)
-
-                    # For each result, add timestamp and resample, keeping only price_multiplier
-                    for name, result in results.items():
-                        result_with_ts = result.copy()
-                        result_with_ts["timestamp"] = binance_data["timestamp"].values
-                        resampled = resample_data(result_with_ts, plot_resample_freq)
-                        # Keep only the columns we need
-                        cols_to_keep = [
-                            "timestamp",
-                            "price_multiplier",
-                            "lambdast_up",
-                            "lambdast_down",
-                            "lambda_up",
-                            "lambda_down",
-                        ]
-                        if "depth_bid" in resampled.columns:
-                            cols_to_keep.append("depth_bid")
-                        if "depth_ask" in resampled.columns:
-                            cols_to_keep.append("depth_ask")
-                        resampled_results[name] = resampled[cols_to_keep].reset_index(drop=True)
-
-                        # Combined rebalance size = |UP delta| + |DOWN delta|. actual_total_delta is
-                        # the *signed* sum of both sides, which largely cancels since UP and DOWN
-                        # rebalance in opposite directions on the same move — using it produced
-                        # near-zero, sign-flipping spikes. Summing the absolute values per side gives
-                        # the actual combined trade size, always >= 0.
-                        result_with_ts["rebalance_magnitude"] = (
-                            result_with_ts["actual_delta_up"].abs() + result_with_ts["actual_delta_down"].abs()
-                        )
-                        magnitude_by_bucket = (
-                            result_with_ts[["timestamp", "rebalance_magnitude"]]
-                            .set_index("timestamp")
-                            .resample(plot_resample_freq)
-                            .sum()
-                            .reset_index()
-                        )
-                        rebalance_magnitudes[name] = magnitude_by_bucket["rebalance_magnitude"].values
-                else:
-                    # For raw data, just extract price_multiplier from each result
-                    for name, result in results.items():
-                        cols_to_keep = [
-                            "price_multiplier",
-                            "lambdast_up",
-                            "lambdast_down",
-                            "lambda_up",
-                            "lambda_down",
-                        ]
-                        if "depth_bid" in result.columns:
-                            cols_to_keep.append("depth_bid")
-                        if "depth_ask" in result.columns:
-                            cols_to_keep.append("depth_ask")
-                        result_copy = result[cols_to_keep].reset_index(drop=True)
-                        result_copy["timestamp"] = binance_data["timestamp"].values
-                        resampled_results[name] = result_copy
-                        rebalance_magnitudes[name] = (
-                            result["actual_delta_up"].abs() + result["actual_delta_down"].abs()
-                        ).values
-
-                # Plot simulations using shared plotting utility
+                # Plot simulations
                 title_freq = frequency.replace("min", "min ")
                 title_prefix = f"{currency.upper()} {title_freq}"
+                plot_options = {
+                    "resample_freq": plot_resample_freq,
+                    "show_hover": show_hover,
+                    "title_prefix": title_prefix,
+                }
 
-                # Prepare data for plotting: convert price_multiplier to simulated_price
-                plot_results_dict = {}
-                for name, result in resampled_results.items():
-                    plot_result = result.copy()
-                    plot_result["simulated_price"] = plot_data["price"].values * result["price_multiplier"].values
-                    plot_results_dict[name] = plot_result
-
-                price_fig, leverage_fig = plot_results(
-                    plot_results_dict,
-                    market_price=plot_data["price"].values,
-                    x_axis=plot_data["timestamp"].values,
-                    lambda_upper=lambda_upper,
-                    lambda_lower=lambda_lower,
-                    show_hover=show_hover,
-                    show_markers=show_markers,
-                    leverage_timing=leverage_timing,
-                    title_prefix=title_prefix,
-                    rebalance_magnitudes=rebalance_magnitudes,
-                    currency=currency.upper(),
+                price_fig = plot_prices(results, **plot_options)
+                leverage_fig = plot_leverage(
+                    results, products, after_rebalance=leverage_timing == "After Rebalance", **plot_options
                 )
+                depth_fig = plot_orderbook_depth(results, **plot_options)
 
-                # Display results in placeholder at top
                 plot_placeholder.plotly_chart(price_fig, width="stretch")
                 leverage_placeholder.plotly_chart(leverage_fig, width="stretch")
-
-                # Display orderbook depth plot
-                depth_fig = plot_orderbook_depth(
-                    resampled_results,
-                    x_axis=plot_data["timestamp"].values,
-                    show_hover=show_hover,
-                    title_prefix=title_prefix,
-                )
                 depth_placeholder.plotly_chart(depth_fig, width="stretch")
 
                 st.success("Simulation completed!")

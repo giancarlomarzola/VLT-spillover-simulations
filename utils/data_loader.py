@@ -11,14 +11,15 @@ from functools import cache
 
 import pandas as pd
 
+from core.variable_leverage_product import VLETP
 from utils.data_io import build_tick_data, tick_path
 
 # Frequencies offered by the dashboard ("Tick" = no resampling)
 FREQUENCIES = ["Tick", "50ms", "500ms", "1s", "15s", "30s", "1min"]
 
 # Default analysis window (UTC)
-START_TIME = pd.Timestamp("2021-05-19 12:00:00", tz="UTC")
-END_TIME = pd.Timestamp("2021-05-19 14:00:00", tz="UTC")
+START_TIME = pd.Timestamp("2021-05-19 11:45:00", tz="UTC")
+END_TIME = pd.Timestamp("2021-05-19 13:45:00", tz="UTC")
 
 
 def _to_utc(ts):
@@ -116,3 +117,35 @@ def load_data(currency, start=START_TIME, end=END_TIME, freq=None):
         )
 
     return resample(ticks, freq, start_utc, end_utc)
+
+
+def products_from_data(data, currency, leverage_lower_bound, leverage_upper_bound, leverage_target=None):
+    """Build the token's UP and DOWN products from the issuer holdings in the first row of `data`.
+
+    Args:
+        data: DataFrame from load_data (needs price, nTokensUP/DOWN, up_price/down_price, BasketUP/DOWN).
+        currency: token ticker, used to name the products (e.g. "btc" -> BTCUP, BTCDOWN).
+        leverage_lower_bound, leverage_upper_bound: leverage band, as positive magnitudes. The DOWN
+            product gets the same band mirrored below zero.
+        leverage_target: None = nearest-boundary rebalancing, a positive number = rebalance to that
+            leverage (mirrored for DOWN).
+
+    Returns:
+        [UP product, DOWN product]
+    """
+    first = data.iloc[0]
+    products = []
+    for side, sign in (("UP", 1), ("DOWN", -1)):
+        products.append(
+            VLETP.from_basket(
+                name=f"{currency.upper()}{side}",
+                n_tokens=first[f"nTokens{side}"],
+                token_price=first[f"{side.lower()}_price"],
+                basket=first[f"Basket{side}"],
+                underlying_price=first["price"],
+                leverage_lower_bound=sign * leverage_lower_bound,
+                leverage_upper_bound=sign * leverage_upper_bound,
+                leverage_target=None if leverage_target is None else sign * leverage_target,
+            )
+        )
+    return products
