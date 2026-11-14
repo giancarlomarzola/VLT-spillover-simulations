@@ -134,7 +134,7 @@ time_step = "1s"
 # Results are saved one file per seed in data/outputs/GBM_simulations/<experiment>/iterations/, and running
 # this script again uses the next unused seeds, adding to what is already there.
 # simulation_from_gbm_table.py builds the table of averages from those files.
-experiment = "500ms_2kappas"  # use a new name/delete the folder when the setup above changes
+experiment = "1s_2kappas"  # use a new name/delete the folder when the setup above changes
 n_iterations = 1_000
 n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
 
