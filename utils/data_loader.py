@@ -9,6 +9,7 @@ This module reads that file at most once per process (cached in memory), then sl
 
 from functools import cache
 
+import numpy as np
 import pandas as pd
 
 from core.variable_leverage_product import VLETP
@@ -149,3 +150,30 @@ def products_from_data(data, currency, leverage_lower_bound, leverage_upper_boun
             )
         )
     return products
+
+
+def log_returns(currency, freq, exclude=()):
+    """Log returns of the token's price on a regular grid, with the returns inside excluded windows removed.
+
+    The full-period ticks are resampled to `freq` (see `resample`), and each return is labelled with the end of
+    its interval, so the return at t covers (t - freq, t]. A return is dropped if its label falls in
+    (window_start, window_end] of any excluded window: the first return kept after a window is the one from
+    window_end to window_end + freq, so no return spans the window. The returns that are left are therefore
+    not all contiguous; look for jumps in the timestamp to find where a window was cut out.
+
+    Args:
+        currency: token ticker, e.g. "btc".
+        freq: fixed-width pandas frequency string, e.g. "100ms".
+        exclude: (start, end) pairs of windows to drop, e.g. data outages (UTC, naive values are treated as UTC).
+
+    Returns:
+        Series of log returns indexed by UTC timestamp (the end of each interval), named "log_return".
+    """
+    ticks = _load_ticks(currency)[["timestamp", "price"]]
+    prices = resample(ticks, freq).set_index("timestamp")["price"]
+    returns = np.log(prices).diff().iloc[1:].rename("log_return")
+
+    keep = np.ones(len(returns), dtype=bool)
+    for start, end in exclude:
+        keep &= ~((returns.index > _to_utc(start)) & (returns.index <= _to_utc(end)))
+    return returns[keep]
