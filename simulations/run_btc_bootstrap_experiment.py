@@ -26,7 +26,7 @@ from core.experiment_runner import run_experiment
 from simulations.products_and_orderbooks import orderbook_sensitivities, vletp_pair
 from utils.paths import BOOTSTRAP_SIMULATIONS
 
-experiment = "100ms_1h_block60s"
+experiment = "1s_40h_block60s"
 experiment_dir = BOOTSTRAP_SIMULATIONS / experiment
 
 # Historical returns: BTC perpetual trade prices on 2021-05-19, resampled to time_step (last trade per
