@@ -118,27 +118,31 @@ class BootstrapPriceGenerator:
 
     returns_path: where the pool of returns is saved (built from the tick data by prepare() if missing).
         Kept next to the results it was used for, as it is part of the experiment's setup.
-    path_length / block: durations, e.g. "1h" / "60s"; both must be multiples of time_step.
+    n_prices: prices per path, including the start price (so n_prices - 1 returns). The last block is cut
+        short when n_prices - 1 is not a multiple of the block length.
+    block: a duration, e.g. "60s"; must be a multiple of time_step.
     master_seed: the seed every iteration's random stream is derived from (see core.seeding).
         None = the iteration number is used as the seed directly.
     """
 
     currency: str
     time_step: str
-    path_length: str
+    n_prices: int
     block: str
     start_price: float
     returns_path: Path
     outages: list[tuple[str, str]] = field(default_factory=list)
     master_seed: int | None = None
 
-    @property
-    def n_prices(self) -> int:
-        return int(pd.Timedelta(self.path_length) / pd.Timedelta(self.time_step)) + 1  # including the start price
+    def __post_init__(self):
+        if self.n_prices < 1:
+            raise ValueError("n_prices must be at least 1")
+        if pd.Timedelta(self.block) % pd.Timedelta(self.time_step) != pd.Timedelta(0):
+            raise ValueError(f"block ({self.block}) must be a multiple of time_step ({self.time_step})")
 
     @property
     def block_length(self) -> int:
-        return int(pd.Timedelta(self.block) / pd.Timedelta(self.time_step))  # returns per block
+        return pd.Timedelta(self.block) // pd.Timedelta(self.time_step)  # returns per block
 
     @property
     def label(self) -> str:
@@ -168,7 +172,6 @@ class BootstrapPriceGenerator:
             "time_step": self.time_step,
             "outages": self.outages,
             "start_price": self.start_price,
-            "path_length": self.path_length,
             "n_prices": self.n_prices,
             "block": self.block,
             "block_length": self.block_length,
@@ -179,7 +182,7 @@ class BootstrapPriceGenerator:
 
     def describe(self) -> str:
         return (
-            f"one {self.path_length} {self.currency.upper()} bootstrapped path "
+            f"one {pd.Timedelta(self.time_step) * (self.n_prices - 1)} {self.currency.upper()} bootstrapped path "
             f"({self.n_prices:,} prices at {self.time_step}, blocks of {self.block})"
         )
 

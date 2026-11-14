@@ -47,8 +47,8 @@ experiment_dir = BOOTSTRAP_SIMULATIONS / experiment
 #   60s        6.18%          4.07%      <- matches both horizons
 price_generator = BootstrapPriceGenerator(
     currency="btc",
-    time_step="100ms",
-    path_length="1h",
+    time_step="1s",
+    n_prices=144_000,  # 40h at 1s
     block="60s",  # length of each resampled block of returns
     start_price=40_000,
     outages=[
@@ -61,7 +61,7 @@ price_generator = BootstrapPriceGenerator(
 vletps = vletp_pair("BTC")
 orderbooks = orderbook_sensitivities()
 
-n_iterations = 100
+n_iterations = 1_000
 n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
 
 # The guard keeps the worker processes, which re-import this file, from starting runs of their own
