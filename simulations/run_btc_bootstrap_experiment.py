@@ -27,7 +27,7 @@ from core.experiment_runner import run_experiment
 from simulations.products_and_orderbooks import btc_orderbooks, btc_vletps
 from utils.paths import BOOTSTRAP_SIMULATIONS
 
-experiment = "1s_40h_block60s"
+experiment = "100ms_4h_block1s"
 experiment_dir = BOOTSTRAP_SIMULATIONS / experiment
 
 # Historical returns: BTC perpetual trade prices on 2021-05-19, resampled to time_step (last trade per
@@ -48,9 +48,9 @@ experiment_dir = BOOTSTRAP_SIMULATIONS / experiment
 #   60s        6.18%          4.07%      <- matches both horizons
 price_generator = BootstrapPriceGenerator(
     currency="btc",
-    time_step="1s",
-    n_prices=144_000,  # 40h at 1s
-    block="60s",  # length of each resampled block of returns
+    time_step="100ms",
+    n_prices=144_000,  # 4h at 100ms
+    block="1s",  # length of each resampled block of returns
     start_price=40_000,
     outages=[
         ("2021-05-19 13:57", "2021-05-19 15:11"),
