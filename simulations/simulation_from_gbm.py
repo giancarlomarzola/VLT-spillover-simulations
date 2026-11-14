@@ -124,10 +124,10 @@ orderbooks = [
 
 # Price process: raw GBM paths, indexed by time elapsed since the start.
 volatilities = [0.2, 0.4, 0.6, 0.8, 1.0]
-n_prices = 100_000
+n_prices = 144_000
 start_price = 1000
 mu = 0.0
-time_step = "500ms"
+time_step = "1s"
 
 # Iterations: each one takes a new seed and runs every (volatility, orderbook) pair on it.
 # Within an iteration every path shares the seed, so they differ only in volatility.
