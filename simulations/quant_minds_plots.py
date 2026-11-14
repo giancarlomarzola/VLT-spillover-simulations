@@ -12,6 +12,7 @@ data/outputs/GBM_simulations/<experiment>/iterations/.
 """
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from core.gbm_iterations import simulate_seed
@@ -122,9 +123,13 @@ for orderbook in orderbooks_list:
 
 experiment = "1s_2kappas"  # folder in data/outputs/GBM_simulations/ written by simulation_from_gbm.py
 single_path_vol = "vol_100"  # resets are too rare at lower volatilities to show one path
-single_path_seed = 88  # middle path, by number of resets, of those with any reset at vol_100
+single_path_seed = 579  # Cherry-picked to my hearts content for illustrative purposes
 
-NAVY, RED, PURPLE, GREY = "#142D50", "#990000", "#7B4FA3", "#808080"
+# Okabe-Ito palette: distinguishable under the common forms of colour blindness
+BLACK, GREY = "#000000", "#999999"
+ORANGE, SKY_BLUE, GREEN, BLUE, VERMILLION, PINK = "#E69F00", "#56B4E9", "#009E73", "#0072B2", "#D55E00", "#CC79A7"
+# Presentation colours, for plots where colour only decorates (one series per panel)
+NAVY, RED = "#142D50", "#990000"
 output_style = {
     "font.family": "serif", "mathtext.fontset": "cm", "font.size": 15,
     "axes.spines.top": False, "axes.spines.right": False,
@@ -132,13 +137,13 @@ output_style = {
 }
 # label, colour, line style, marker, line width
 book_styles = {
-    "baseline": ("Baseline", NAVY, "-", "o", 2.6),
-    "resilience 30min": ("Half-life 30 min", "#4A6583", "--", "s", 1.8),
-    "depth 0.5x": (r"Depth 0.5$\times$", PURPLE, "--", "v", 1.8),
-    "width 2x": (r"Width 2$\times$", "#C68A2E", "-", "D", 1.8),
-    "shape k1": (r"Shape $\kappa=1$", "#8FA3B8", "-", "^", 1.8),
-    "shape k1_5": (r"Shape $\kappa=1.5$", "#3E8E7E", ":", "P", 1.8),
-    "spread 2x": (r"Spread 2$\times$", RED, "-", "o", 2.6),
+    "baseline": ("Baseline", BLACK, "-", "o", 2.6),
+    "resilience 30min": ("Half-life 30 min", SKY_BLUE, "--", "s", 1.8),
+    "depth 0.5x": (r"Depth 0.5$\times$", PINK, "--", "v", 1.8),
+    "width 2x": (r"Width 2$\times$", ORANGE, "-", "D", 1.8),
+    "shape k1": (r"Shape $\kappa=1$", BLUE, "-", "^", 1.8),
+    "shape k1_5": (r"Shape $\kappa=1.5$", GREEN, ":", "P", 1.8),
+    "spread 2x": (r"Spread 2$\times$", VERMILLION, "-", "o", 2.6),
 }
 
 results_dir = GBM_SIMULATIONS / experiment / "iterations"
@@ -151,9 +156,29 @@ runs["active"] = runs["n_rebalances"] > 0  # paths with at least one reset
 print(f"{runs['seed'].nunique()} iterations from {results_dir}")
 
 # ---------- numbers for the slides ----------
+def save_latex_table(table: pd.DataFrame, name: str, formats: dict, column_format: str) -> None:
+    """
+    Save a table as a bare booktabs tabular, to \\input into the deck (needs \\usepackage{booktabs}).
+    Headers and row labels are written as given, so they may hold LaTeX such as $\\times$.
+    """
+    # Row labels become the first column, so the index name sits in the header row, not under it
+    latex = table.reset_index().style.hide(axis="index").format(formats, na_rep="--").to_latex(
+        column_format=column_format, hrules=True
+    )
+    if save_plots:
+        (output_dir / f"{name}.tex").write_text(latex, encoding="utf-8")
+
+
 pd.set_option("display.width", 250, "display.max_columns", 50)
+active = runs[runs["orderbook"] == "baseline"].groupby("vol")["active"].agg(["sum", "mean"])
 print("\nPaths with at least one reset (baseline book):")
-print(runs[runs["orderbook"] == "baseline"].groupby("vol")["active"].agg(["sum", "mean"]))
+print(active)
+active_tex = pd.DataFrame(
+    {"Paths with a reset": active["sum"], "Share of paths": active["mean"] * 100},
+)
+active_tex.index = [f"{vol}\\%" for vol in active_tex.index]
+active_tex.index.name = "Volatility"
+save_latex_table(active_tex, "active_paths", {"Paths with a reset": "{:,.0f}", "Share of paths": "{:.1f}\\%"}, "lrr")
 
 # Trade size and impact are NaN on paths without resets, so their means are over the active paths
 table = runs[runs["price_series"] == single_path_vol].groupby("orderbook", sort=False).agg(
@@ -168,18 +193,69 @@ table = runs[runs["price_series"] == single_path_vol].groupby("orderbook", sort=
     nav_inv_m=("final_nav_GBM_DOWN", lambda s: s.mean() / 1e6),
 )
 print(f"\nSummary table at {single_path_vol}:\n{table.round(3)}")
+# Slide version of the table: a tabular* to \input inside the frame, which sets the font size and
+# \tabcolsep. Needs booktabs in the deck, and a \red{} macro if any row is highlighted.
+summary_rows = {  # row label in the deck, for the books in the order shown
+    "no_orderbook": "No order book",
+    "baseline": "Baseline",
+    "depth 0.5x": r"Depth $0.5\times$",
+    "width 2x": r"Width $2\times$",
+    "spread 2x": r"Spread $2\times$",
+    "shape k1": r"Shape $\kappa=1$",
+    "shape k1_5": r"Shape $\kappa=1.5$",
+    "resilience 30min": "Half-life 30 min",
+}
+highlighted_rows = set()  # books whose row is wrapped in \red{}, e.g. {"spread 2x"}
+summary_columns = {  # column -> number format
+    "resets": "{:.1f}", "trade_k": "{:,.0f}", "mean_abs_bps": "{:.2f}", "max_buy_bps": "{:.2f}",
+    "final_bps": "{:.1f}", "highest_bps": "{:.1f}", "largest_pct": "{:.2f}",
+}
+summary_lines = [
+    r"\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lrrrrrrr@{}}",
+    r"    \toprule",
+    r"    & & \textbf{Trade} & \multicolumn{2}{c}{\textbf{Impact (bps)}} & \multicolumn{3}{c}{\textbf{Spillover}}\\",
+    r"    \cmidrule(lr){4-5}\cmidrule(lr){6-8}",
+    r"    \textbf{Order book} & \textbf{Resets} & (\$k) & Mean $|I|$ & Max buy"
+    r" & Final (bps) & Highest (bps) & Largest (\%)\\",
+    r"    \midrule",
+]
+for book, label in summary_rows.items():
+    cells = [label]
+    for column, fmt in summary_columns.items():
+        value = table.loc[book, column]
+        # Without an order book there is no impact to report
+        no_impact = book == "no_orderbook" and column in ("mean_abs_bps", "max_buy_bps")
+        cells.append("--" if no_impact or pd.isna(value) else fmt.format(value))
+    if book in highlighted_rows:
+        cells = [rf"\red{{{cell}}}" for cell in cells]
+    summary_lines.append("    " + " & ".join(cells) + r"\\")
+summary_lines += [r"    \bottomrule", r"\end{tabular*}", ""]
+if save_plots:
+    summary_path = output_dir / f"summary_table_{single_path_vol.replace('_', '')}.tex"
+    summary_path.write_text("\n".join(summary_lines), encoding="utf-8")
 
 # ---------- spillover and resets by volatility ----------
 means = runs.groupby(["orderbook", "vol"]).agg(
     final=("final_price_deviation", "mean"), resets=("n_rebalances", "mean")
 )
+# 95% confidence intervals of the means, from the standard deviations across seeds and the
+# number of runs per cell on the "stdev" sheet written by simulation_from_gbm_table.py.
+# Normal approximation: half-width 1.96 * std / sqrt(n), with n = 1000 runs per cell.
+stdevs = pd.read_excel(
+    GBM_SIMULATIONS / experiment / "summary_table.xlsx", sheet_name="stdev", index_col=[0, 1]
+).reset_index()
+stdevs["vol"] = stdevs["price_series"].str.removeprefix("vol_").astype(int)
+stdevs = stdevs.set_index(["orderbook", "vol"])
+ci95 = stdevs[["final_price_deviation", "n_rebalances"]].mul(1.96 / np.sqrt(stdevs["n_runs"]), axis=0)
+dodge = np.linspace(-2.4, 2.4, len(book_styles))  # vol-% shift per book, so the bars do not overlap
 with plt.rc_context(output_style):
     fig, axes = plt.subplots(1, 2, figsize=(11.8, 4.4))
-    for book, (label, color, ls, marker, lw) in book_styles.items():
-        m = means.loc[book]
-        style = dict(color=color, ls=ls, marker=marker, lw=lw, ms=6, label=label)
-        axes[0].plot(m.index, m["final"] * 1e4, **style)
-        axes[1].plot(m.index, m["resets"], **style)
+    for offset, (book, (label, color, ls, marker, lw)) in zip(dodge, book_styles.items()):
+        m, ci = means.loc[book], ci95.loc[book].reindex(means.loc[book].index)
+        style = dict(color=color, ls=ls, marker=marker, lw=lw, ms=6, label=label,
+                     elinewidth=1.0, capsize=3, alpha=0.9)
+        axes[0].errorbar(m.index + offset, m["final"] * 1e4, yerr=ci["final_price_deviation"] * 1e4, **style)
+        axes[1].errorbar(m.index + offset, m["resets"], yerr=ci["n_rebalances"], **style)
     axes[0].set_title("Cumulative spillover after 40 hours", fontsize=15)
     axes[0].set_ylabel("Mean final spillover (bps)")
     axes[1].set_title("Number of resets", fontsize=15)
@@ -187,7 +263,7 @@ with plt.rc_context(output_style):
     for ax in axes:
         ax.set_xlabel("Annualised GBM volatility (%)")
         ax.set_xticks([20, 40, 60, 80, 100])
-        ax.set_ylim(bottom=0)
+    axes[1].set_ylim(bottom=0)  # resets are counts; spillover keeps matplotlib's automatic limits
     axes[0].legend(fontsize=12, loc="upper left")
     fig.tight_layout()
     fig.show()
@@ -224,21 +300,21 @@ with plt.rc_context(output_style):
     fig, axes = plt.subplots(1, 2, figsize=(11.8, 4.4))
     ax = axes[0]
     ax.plot(hours[::step], base["raw_price"].iloc[::step], color=GREY, lw=1.2, label="GBM input (no impact)")
-    ax.plot(hours[::step], base["simulated_price"].iloc[::step], color=NAVY, lw=1.2, label="Baseline book")
-    ax.plot(hours[::step], res["spread 2x"]["simulated_price"].iloc[::step], color=RED, lw=1.2,
+    ax.plot(hours[::step], base["simulated_price"].iloc[::step], color=BLACK, lw=1.2, label="Baseline book")
+    ax.plot(hours[::step], res["spread 2x"]["simulated_price"].iloc[::step], color=VERMILLION, lw=1.2,
             label=r"Spread 2$\times$")
     ax.set_title("Input price and simulated price", fontsize=15)
     ax.set_ylabel("Price")
     ax.legend(fontsize=12, loc="upper left")
     ax = axes[1]
     for book, label, color, ls in [
-        ("baseline", "Baseline book", NAVY, "-"),
-        ("depth 0.5x", r"Depth 0.5$\times$", PURPLE, "--"),
-        ("spread 2x", r"Spread 2$\times$", RED, "-"),
+        ("baseline", "Baseline book", BLACK, "-"),
+        ("depth 0.5x", r"Depth 0.5$\times$", PINK, "--"),
+        ("spread 2x", r"Spread 2$\times$", VERMILLION, "-"),
     ]:
         ax.plot(hours[::step], (res[book]["price_multiplier"].iloc[::step] - 1) * 100,
                 color=color, lw=1.6, ls=ls, label=label)
-    ax.axhline(0, color="black", lw=0.8)
+    ax.axhline(0, color=GREY, lw=0.8)  # grey, so it is not mistaken for the black baseline
     ax.set_title("Cumulative spillover from rebalancing", fontsize=15)
     ax.set_ylabel("Deviation from input price (%)")
     ax.legend(fontsize=12, loc="upper left")
