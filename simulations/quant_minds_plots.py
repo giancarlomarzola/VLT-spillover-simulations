@@ -111,10 +111,10 @@ for orderbook in orderbooks_list:
         baseline=baseline_orderbook,  # dotted outline; skipped on the baseline's own plot
         title="",
         )
-    fig.show()
-
     if save_plots:
         fig.savefig(output_dir / f"orderbook_{orderbook.name}.png", dpi=300, bbox_inches="tight")
+    else:
+        fig.show()
 
 
 # ========================================
@@ -266,9 +266,10 @@ with plt.rc_context(output_style):
     axes[1].set_ylim(bottom=0)  # resets are counts; spillover keeps matplotlib's automatic limits
     axes[0].legend(fontsize=12, loc="upper left")
     fig.tight_layout()
-    fig.show()
     if save_plots:
         fig.savefig(output_dir / "gbm_updown_summary.png", dpi=300, bbox_inches="tight")
+    else:
+        fig.show()
 
 # ---------- one path, re-simulated in full ----------
 single_path_books = ["baseline", "depth 0.5x", "spread 2x"]
@@ -322,9 +323,10 @@ with plt.rc_context(output_style):
         ax.set_xlabel("Time elapsed (hours)")
         ax.set_xticks(range(0, 41, 5))
     fig.tight_layout()
-    fig.show()
     if save_plots:
         fig.savefig(output_dir / f"{file_stem}_price.png", dpi=300, bbox_inches="tight")
+    else:
+        fig.show()
 
     fig, axes = plt.subplots(1, 2, figsize=(11.8, 4.0), sharey=True)
     for ax, product, name, color in [
@@ -343,6 +345,7 @@ with plt.rc_context(output_style):
         print(f"{name}: {n_resets} resets, {int((delta > 0).sum())} purchases, {int((delta < 0).sum())} sales")
     axes[0].set_ylabel(r"Leverage after any reset, $|\lambda_t^*|$")
     fig.tight_layout()
-    fig.show()
     if save_plots:
         fig.savefig(output_dir / f"{file_stem}_leverage.png", dpi=300, bbox_inches="tight")
+    else:
+        fig.show()
