@@ -1,8 +1,9 @@
 """
-Table of averages for the runs saved by simulation_from_gbm.py.
+Tables of averages and standard deviations for the runs saved by simulation_from_gbm.py.
 
 Reads every per-seed file in data/outputs/GBM_simulations/<experiment>/iterations/ and
-averages each (price series, orderbook) cell across seeds. It runs no simulations, so it can
+averages each (price series, orderbook) cell across seeds, with a second table of the
+standard deviations across seeds. It runs no simulations, so it can
 be re-run at any point to pick up newly saved iterations.
 
 Runs that fell into a fatal feedback loop (see core.simulation.flag_feedback_loops) are
@@ -89,13 +90,27 @@ formats |= {
 }
 display(summary.style.format(formats, na_rep="-"))
 
-# Also save the table as Excel, overwriting the previous one. Values are the raw numbers
-# (decimals rather than bps or %), so they can be used in calculations; wipeout times are
-# in days, as Excel has no elapsed-time type.
-excel_summary = summary.copy()
-for column in [column for column in summary.columns if column.startswith("wipeout_time_")]:
-    excel_summary[column] = summary[column].dt.total_seconds() / 86_400
-    excel_summary = excel_summary.rename(columns={column: f"{column}_days"})
+# Standard deviation across seeds of each averaged column, over the same runs as the averages
+# (no feedback loops, NaN skipped). Rates and counts of runs are left out: a rate is a share of
+# runs, so its spread follows from the rate itself. n_runs is the number of runs behind each
+# cell (for standard errors, std / sqrt(n)); a wipeout time's std is over the wiped-out runs only.
+std_columns = [column for column in columns if not column.startswith(RATE_PREFIXES)]
+stdev = runs[~loops["feedback_loop"]].groupby(keys, sort=False)[std_columns].std()
+stdev = stdev.reindex(grouped.size().index)
+stdev.insert(0, "n_runs", summary["n_iterations"] - summary["n_feedback_loops"])
+display(stdev.style.format({column: formats[column] for column in stdev.columns if column in formats}, na_rep="-"))
+
+# Also save both tables as Excel, overwriting the previous file: averages on the "summary"
+# sheet, standard deviations on the "stdev" sheet. Values are the raw numbers (decimals rather
+# than bps or %), so they can be used in calculations; wipeout times are in days, as Excel has
+# no elapsed-time type.
+def to_excel_values(table: pd.DataFrame) -> pd.DataFrame:
+    """Copy of a table with wipeout times converted to days."""
+    table = table.copy()
+    for column in [column for column in table.columns if column.startswith("wipeout_time_")]:
+        table[column] = table[column].dt.total_seconds() / 86_400
+        table = table.rename(columns={column: f"{column}_days"})
+    return table
 
 
 def excel_number_format(column: str) -> str:
@@ -115,37 +130,43 @@ def excel_number_format(column: str) -> str:
     return "#,##0"  # counts, sizes, depths and NAVs
 
 
+def write_sheet(writer: pd.ExcelWriter, table: pd.DataFrame, sheet_name: str) -> None:
+    """Write a table to its own sheet, with a uniform font, borders, number formats and filters."""
+    table.to_excel(writer, sheet_name=sheet_name, merge_cells=False)
+    sheet = writer.sheets[sheet_name]
+    n_index = table.index.nlevels
+    font = Font(name="Calibri", size=11)
+    edge = Side(style="thin", color="BFBFBF")
+    border = Border(left=edge, right=edge, top=edge, bottom=edge)
+
+    # Every cell gets the same font and border, so nothing is left on pandas' defaults
+    for position, cells in enumerate(sheet.iter_cols(), start=1):
+        header, body = cells[0], cells[1:]
+        is_index = position <= n_index
+        header.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        header.fill = PatternFill("solid", fgColor="1F4E78")
+        header.alignment = Alignment(horizontal="center", vertical="center")
+        header.border = border
+        number_format = "General" if is_index else excel_number_format(header.value)
+        for cell in body:
+            cell.font = font
+            cell.border = border
+            cell.alignment = Alignment(horizontal="left" if is_index else "right", vertical="center")
+            cell.number_format = number_format
+        # Wide enough for the header (plus its filter button) and for the largest NAVs
+        longest = max([len(str(header.value))] + [len(str(cell.value)) for cell in body if is_index])
+        sheet.column_dimensions[get_column_letter(position)].width = max(longest + 5, 16)
+
+    sheet.row_dimensions[1].height = 22
+    sheet.freeze_panes = sheet.cell(row=2, column=n_index + 1)  # keep header and row labels in view
+    sheet.auto_filter.ref = sheet.dimensions
+
+
 excel_path = experiment_dir / "summary_table.xlsx"
 try:
     with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
-        excel_summary.to_excel(writer, sheet_name="summary", merge_cells=False)
-        sheet = writer.sheets["summary"]
-        n_index = excel_summary.index.nlevels
-        font = Font(name="Calibri", size=11)
-        edge = Side(style="thin", color="BFBFBF")
-        border = Border(left=edge, right=edge, top=edge, bottom=edge)
-
-        # Every cell gets the same font and border, so nothing is left on pandas' defaults
-        for position, cells in enumerate(sheet.iter_cols(), start=1):
-            header, body = cells[0], cells[1:]
-            is_index = position <= n_index
-            header.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-            header.fill = PatternFill("solid", fgColor="1F4E78")
-            header.alignment = Alignment(horizontal="center", vertical="center")
-            header.border = border
-            number_format = "General" if is_index else excel_number_format(header.value)
-            for cell in body:
-                cell.font = font
-                cell.border = border
-                cell.alignment = Alignment(horizontal="left" if is_index else "right", vertical="center")
-                cell.number_format = number_format
-            # Wide enough for the header (plus its filter button) and for the largest NAVs
-            longest = max([len(str(header.value))] + [len(str(cell.value)) for cell in body if is_index])
-            sheet.column_dimensions[get_column_letter(position)].width = max(longest + 5, 16)
-
-        sheet.row_dimensions[1].height = 22
-        sheet.freeze_panes = sheet.cell(row=2, column=n_index + 1)  # keep header and row labels in view
-        sheet.auto_filter.ref = sheet.dimensions
-    print(f"Table saved to {excel_path}")
+        write_sheet(writer, to_excel_values(summary), "summary")
+        write_sheet(writer, to_excel_values(stdev), "stdev")
+    print(f"Tables saved to {excel_path}")
 except PermissionError:
     print(f"Could not save {excel_path}: close it in Excel and run this again")
