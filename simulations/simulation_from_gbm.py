@@ -1,15 +1,13 @@
-import itertools
 import json
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-import matplotlib.pyplot as plt
 import pandas as pd
 
 from core.gbm_iterations import run_iteration, saved_seeds, simulate_seed  # noqa: F401 (interactive use)
 from core.orderbook import Orderbook
-from core.price_process import generate_gbm_price_series
+from core.summary_tables import build_summary_tables
 from core.variable_leverage_product import VLETP
 from utils.paths import GBM_SIMULATIONS
 from utils.plotting import plot_leverage, plot_orderbook_depth, plot_prices  # noqa: F401 (interactive use)
@@ -125,15 +123,17 @@ orderbooks = [
 # Price process: raw GBM paths, indexed by time elapsed since the start.
 volatilities = [0.2, 0.4, 0.6, 0.8, 1.0]
 n_prices = 144_000
-start_price = 1000
+start_price = 100
 mu = 0.0
 time_step = "1s"
 
 # Iterations: each one takes a new seed and runs every (volatility, orderbook) pair on it.
 # Within an iteration every path shares the seed, so they differ only in volatility.
-# Results are saved one file per seed in data/outputs/GBM_simulations/<experiment>/iterations/, and running
-# this script again uses the next unused seeds, adding to what is already there.
-# simulation_from_gbm_table.py builds the table of averages from those files.
+# Results are saved one file per seed in data/outputs/GBM_simulations/<experiment>/iterations/.
+# n_iterations is the target total: running this script again runs only the seeds in
+# 0..n_iterations-1 that are not saved yet (none once the target is reached), then rebuilds
+# the summary tables from every saved seed. Raise n_iterations to add more seeds.
+# To rebuild them without running anything: core.summary_tables.build_summary_tables(experiment_dir).
 experiment = "1s_2kappas"  # use a new name/delete the folder when the setup above changes
 n_iterations = 1_000
 n_workers = max(1, os.cpu_count() - 1)  # iterations run in parallel, one per process; 1 = no parallelism
@@ -210,47 +210,40 @@ if __name__ == "__main__":
     else:
         config_path.write_text(json.dumps(config, indent=2))
 
-    # The lowest seeds not saved yet, so an interrupted run leaves no permanent gaps
+    # Seeds 0..n_iterations-1 not saved yet, so an interrupted run is completed by running again
     existing_seeds = saved_seeds(results_dir)
-    seeds = list(itertools.islice((s for s in itertools.count() if s not in existing_seeds), n_iterations))
+    seeds = [seed for seed in range(n_iterations) if seed not in existing_seeds]
 
-    n_processes = min(n_workers, n_iterations)
-    runs_per_iteration = len(volatilities) * len(orderbooks)
-    print(
-        f"Running {n_iterations} iterations (seeds {seeds[0]} to {seeds[-1]}) on {n_processes} processes\n"
-        f"  Each iteration: {len(volatilities)} volatilities x {len(orderbooks)} orderbooks = "
-        f"{runs_per_iteration} runs of {n_prices:,} prices ({n_iterations * runs_per_iteration:,} runs in total)\n"
-        f"  Already saved: {len(existing_seeds)} iterations in {results_dir}\n"
-        "  The first results can take a while to appear, as iterations finish in batches",
-        flush=True,
-    )
+    if not seeds:
+        print(f"All {n_iterations} iterations already saved in {results_dir}; nothing to run")
+    else:
+        n_processes = min(n_workers, len(seeds))
+        runs_per_iteration = len(volatilities) * len(orderbooks)
+        print(
+            f"Running {len(seeds)} iterations (seeds {seeds[0]} to {seeds[-1]}) on {n_processes} processes\n"
+            f"  Each iteration: {len(volatilities)} volatilities x {len(orderbooks)} orderbooks = "
+            f"{runs_per_iteration} runs of {n_prices:,} prices ({len(seeds) * runs_per_iteration:,} runs in total)\n"
+            f"  Already saved: {len(existing_seeds)} iterations in {results_dir}\n"
+            "  The first results can take a while to appear, as iterations finish in batches",
+            flush=True,
+        )
 
-    started = time.perf_counter()
-    pool = ProcessPoolExecutor(max_workers=n_processes)
-    try:
-        futures = [pool.submit(run_iteration, seed, results_dir, **setup) for seed in seeds]
-        for n_done, future in enumerate(as_completed(futures), start=1):
-            seed, seconds = future.result()
-            print(
-                f"Seed {seed} done in {seconds:.0f}s ({n_done}/{n_iterations} this run, "
-                f"{len(existing_seeds) + n_done} saved in total)"
-            )
-    finally:
-        pool.shutdown(cancel_futures=True)  # on an error or interrupt, do not start the remaining seeds
-    print(f"{n_iterations} iterations in {time.perf_counter() - started:.0f}s")
+        started = time.perf_counter()
+        pool = ProcessPoolExecutor(max_workers=n_processes)
+        try:
+            futures = [pool.submit(run_iteration, seed, results_dir, **setup) for seed in seeds]
+            for n_done, future in enumerate(as_completed(futures), start=1):
+                seed, seconds = future.result()
+                print(
+                    f"Seed {seed} done in {seconds:.0f}s ({n_done}/{len(seeds)} this run, "
+                    f"{len(existing_seeds) + n_done} saved in total)"
+                )
+        finally:
+            pool.shutdown(cancel_futures=True)  # on an error or interrupt, do not start the remaining seeds
+        print(f"{len(seeds)} iterations in {time.perf_counter() - started:.0f}s")
 
-    # Raw vol_60 path of the last seed of this run, as a check
-    vol = 0.6
-    plot_series = generate_gbm_price_series(
-        n_prices=n_prices, start_price=start_price, mu=mu, sigma=vol, time_step=time_step, seed=seeds[-1]
-    )
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(plot_series.index.total_seconds() / 86_400, plot_series, linewidth=0.8)
-    ax.set_title(f"GBM price path, {round(vol * 100)}% volatility, seed={seeds[-1]}")
-    ax.set_xlabel("Time elapsed (days)")
-    ax.set_ylabel("Price")
-    ax.grid(alpha=0.3)
-    plt.show()
+    # Averages and standard deviations across every saved seed, saved to summary_table.xlsx
+    build_summary_tables(experiment_dir)
 
 # To inspect one iteration in full, re-run 
 # the following block in interactive winodw (the seed makes it reproducible):
