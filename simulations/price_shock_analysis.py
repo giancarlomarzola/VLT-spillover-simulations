@@ -5,8 +5,7 @@ import pandas as pd
 from IPython.display import display
 from matplotlib.ticker import FuncFormatter, MultipleLocator
 
-from utils.data_io import processed_filename
-from utils.paths import DATA_PROCESSED
+from utils.data_loader import load_data
 from utils.plotting import TRACE_COLORS
 
 currency = "btc"
@@ -15,7 +14,7 @@ frequency = "1s"
 start_time = pd.Timestamp("2021-05-19 12:00:00", tz="UTC")
 end_time = pd.Timestamp("2021-05-19 14:00:00", tz="UTC")
 
-df = pd.read_parquet(DATA_PROCESSED / processed_filename(currency, frequency, start_time, end_time))
+df = load_data(currency, start_time, end_time, frequency)
 
 df["log_return"] = np.log(df["price"] / df["price"].shift(1))
 
@@ -91,7 +90,7 @@ plt.show()
 start_time = pd.Timestamp("2021-05-19 4:00:00", tz="UTC")
 end_time = pd.Timestamp("2021-05-19 6:00:00", tz="UTC")
 
-df_unshocked = pd.read_parquet(DATA_PROCESSED / processed_filename(currency, frequency, start_time, end_time))
+df_unshocked = load_data(currency, start_time, end_time, frequency)
 
 shock_factor = np.exp(df["log_shocks"].cumsum())
 df_unshocked["price_shocked"] = df_unshocked["price"] * shock_factor.to_numpy()

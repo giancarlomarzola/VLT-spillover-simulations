@@ -1,0 +1,1 @@
+# Data ok to use except 13:45 to 15:15

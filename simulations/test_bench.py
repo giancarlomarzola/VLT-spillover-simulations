@@ -1,15 +1,14 @@
 # Imports
-import pandas as pd
-
 from core.orderbook import Orderbook
 from core.price_spillover_simulations import run_simulation
-from utils.data_io import processed_filename
+from utils.data_loader import END_TIME, START_TIME, load_data
 from utils.legacy_plotting import plot_orderbook_depth, plot_results
-from utils.paths import DATA_PROCESSED
 
 # Parameters
 currency = "btc"
-frequency = "1s"
+frequency = "1s"  # resampling frequency, "Tick" = raw ticks
+start_time = START_TIME
+end_time = END_TIME
 
 lambda_target = None  # None = boundary rebalancing, float = target rebalancing
 lambda_upper = 4  # upper boundary
@@ -76,17 +75,10 @@ orderbooks = [
 ]
 
 
-# Load pre-processed data
-try:
-    print(f"Loading {currency.upper()} at {frequency} frequency...")
-    binance_data = pd.read_parquet(DATA_PROCESSED / processed_filename(currency, frequency))
-    binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)
-    print(f"Loaded {len(binance_data)} rows")
-except FileNotFoundError:
-    raise FileNotFoundError(
-        f"Pre-processed data not found for {currency} at {frequency} frequency.\n"
-        f"Run data_processing.py to prepare the data."
-    )
+# Load data
+print(f"Loading {currency.upper()} at {frequency} frequency...")
+binance_data = load_data(currency, start_time, end_time, frequency)
+print(f"Loaded {len(binance_data)} rows")
 
 # Simulation
 results = {}

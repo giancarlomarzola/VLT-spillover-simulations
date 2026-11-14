@@ -1,31 +1,18 @@
+"""Raw data IO: parse raw Binance trade and rebalance files into one tick-level parquet per token.
+
+Run once (or whenever raw data changes):  uv run python utils/data_io.py
+"""
+
 import os
 
 import pandas as pd
 
 from utils.paths import DATA_PROCESSED, DATA_RAW
 
-# Available data frequencies for simulations
-FREQUENCIES = ["Tick", "50ms", "500ms", "1s", "15s", "30s", "1min"]
 
-# Default analysis window (UTC) applied when preparing processed data
-START_TIME = pd.Timestamp("2021-05-19 12:00:00", tz="UTC")
-END_TIME = pd.Timestamp("2021-05-19 14:00:00", tz="UTC")
-#START_TIME = pd.Timestamp("2021-05-19 04:00:00", tz="UTC")
-#END_TIME = pd.Timestamp("2021-05-19 06:00:00", tz="UTC")
-
-# Timestamp format used to encode the analysis window in processed filenames
-_FILENAME_TIME_FMT = "%Y%m%dT%H%M%S"
-
-
-def processed_filename(currency, freq, start_time=None, end_time=None):
-    """Build the filename for a processed data file with timestamp encoding."""
-    label = "tick" if freq == "Tick" else freq
-    start_time = START_TIME if start_time is None else pd.Timestamp(start_time)
-    end_time = END_TIME if end_time is None else pd.Timestamp(end_time)
-
-    start_str = start_time.strftime(_FILENAME_TIME_FMT)
-    end_str = end_time.strftime(_FILENAME_TIME_FMT)
-    return f"{currency}_{label}_processed_{start_str}_{end_str}.parquet"
+def tick_path(currency):
+    """Path of the full-period tick-level parquet for a token (built by `build_tick_data`)."""
+    return DATA_PROCESSED / f"{currency}_tick.parquet"
 
 
 def get_column_names(dataname):
@@ -71,6 +58,7 @@ def get_column_names(dataname):
             "data.T": "Trade_time",
             "data.m": "buyer_maker_flag",
             "data.M": "Ignore",
+            "data.X": "Order_type",  # futures only: MARKET / INSURANCE_FUND
         }
     else:
         raise Exception(f"dataname {dataname} in function get_column_names not found")  # noqa: TRY002
@@ -104,7 +92,19 @@ def load_raw_data(filepath, tradevenue, ticker, timestamp, dataname):
 
 
 def process_data(df, token_name):
-    """Clean trade data: extract timestamp and price, sort, and prefix with token_name."""
+    """Clean trade data: keep market trades, extract timestamp and price, sort, and prefix with token_name.
+
+    Futures trades carry an order type (data.X). Only MARKET trades are kept: INSURANCE_FUND fills are liquidation
+    take-overs, reported at off-market prices (including 0 and e.g. BTC 294,838 vs a 34,900 market), so they are
+    not price-discovery trades. Spot trades have no order type and are kept as is.
+    """
+    if "Order_type" in df.columns:
+        is_market = df["Order_type"] == "MARKET"
+        if (~is_market).any():
+            dropped = df.loc[~is_market, "Order_type"].value_counts().to_dict()
+            print(f"  {token_name or 'perp '}trades: dropped non-market trades {dropped}")
+        df = df[is_market]
+
     df = (
         df.assign(
             timestamp=lambda d: d.Event_time,
@@ -234,75 +234,26 @@ def create_currency_df(currency, include_rebalance=True):
     return token_merged
 
 
-def prepare_processed_data(currency, frequencies=None, start_time=START_TIME, end_time=END_TIME):
-    """Load raw data, resample to specified frequencies, then filter to analysis period.
+def build_tick_data(currency):
+    """Parse the raw data for one token over its full period and save it as a single tick-level parquet.
 
-    Args:
-        currency: ticker (e.g., "btc", "sushi")
-        frequencies: list of frequencies (e.g., ["15s", "30s", "1min"]).
-        start_time: start of the analysis window (UTC), used to filter data and name output files.
-        end_time: end of the analysis window (UTC), used to filter data and name output files.
+    This is the only place raw files are read. Everything downstream loads the result through
+    `utils.data_loader.load_data`, which slices out a window and resamples on demand.
     """
-    output_folder = DATA_PROCESSED
-    output_folder.mkdir(parents=True, exist_ok=True)
+    DATA_PROCESSED.mkdir(parents=True, exist_ok=True)
 
-    start_time = pd.Timestamp(start_time)
-    end_time = pd.Timestamp(end_time)
-    if start_time >= end_time:
-        raise ValueError(f"start_time ({start_time}) must be before end_time ({end_time})")
-
-    print(f"Loading {currency.upper()} token data (tick-level, cleaned)...")
+    print(f"Loading {currency.upper()} raw tick data for the full period...")
     data = create_currency_df(currency)
-    print(f"Raw data shape: {data.shape}")
-
-    # Ensure timestamp is datetime and UTC-aware
     data["timestamp"] = pd.to_datetime(data["timestamp"], utc=True)
+    data = data.sort_values("timestamp", kind="stable").reset_index(drop=True)
 
-    # Verify the requested window falls within the available raw data
-    raw_start = data["timestamp"].min()
-    raw_end = data["timestamp"].max()
-    if start_time < raw_start or end_time > raw_end:
-        raise ValueError(
-            f"Requested analysis window [{start_time}, {end_time}] falls outside the available "
-            f"raw data range [{raw_start}, {raw_end}] for {currency}"
-        )
-
-    # Filter tick-level data to analysis period and save
-    data_filtered = data[data["timestamp"].between(start_time, end_time)].reset_index(drop=True)
-    print(f"Filtered data shape ({end_time - start_time} window): {data_filtered.shape}")
-
-    filename_tick = output_folder / processed_filename(currency, "Tick", start_time, end_time)
-    data_filtered.to_parquet(filename_tick, index=False)
-    print(f"Saved tick-level data ({data_filtered.shape[0]} rows) to {filename_tick}")
-
-    if frequencies is not None:
-        # Resample full dataset first (for complete bins), then filter to analysis period
-        for freq in frequencies:
-            df_resampled = data.copy()
-            df_resampled = df_resampled.set_index("timestamp")
-            # Resample entire dataframe to create bins, take last value in each bin
-            df_resampled = df_resampled.resample(freq, closed="right", label="right").last()
-            # Forward-fill any gaps
-            df_resampled = df_resampled.ffill()
-            df_resampled = df_resampled.reset_index()
-
-            # Filter resampled data to analysis period
-            df_resampled = df_resampled[df_resampled["timestamp"].between(start_time, end_time)].reset_index(
-                drop=True
-            )
-
-            filename = output_folder / processed_filename(currency, freq, start_time, end_time)
-            df_resampled.to_parquet(filename, index=False)
-            print(f"Saved {freq} resampled data ({df_resampled.shape[0]} rows) to {filename}")
+    path = tick_path(currency)
+    data.to_parquet(path, index=False)
+    print(f"Saved {len(data)} ticks ({data['timestamp'].min()} to {data['timestamp'].max()}) to {path}")
+    return path
 
 
 if __name__ == "__main__":
-    currencies = ["sushi", "btc", "eth"]
-    # Use all frequencies except Tick (Tick is loaded separately)
-    frequencies = [f for f in FREQUENCIES if f != "Tick"]
-
-    for currency in currencies:
-        print(f"\n{'=' * 50}")
-        print(f"Processing {currency.upper()}")
-        print(f"{'=' * 50}")
-        prepare_processed_data(currency, frequencies)
+    for currency in ["sushi", "btc", "eth"]:
+        print(f"\n{'=' * 50}\nProcessing {currency.upper()}\n{'=' * 50}")
+        build_tick_data(currency)

@@ -8,14 +8,12 @@ import json
 import uuid
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 
 from core.orderbook import Orderbook
 from core.price_spillover_simulations import run_simulation
-from utils.data_io import FREQUENCIES, processed_filename
+from utils.data_loader import FREQUENCIES, load_data
 from utils.legacy_plotting import plot_orderbook_depth, plot_results, resample_data
-from utils.paths import DATA_PROCESSED
 
 
 def frequency_to_seconds(freq):
@@ -670,11 +668,8 @@ else:
     if st.button("Run Simulation", type="primary"):
         with st.spinner("Running simulation..."):
             try:
-                # Load pre-processed data
-                filepath = DATA_PROCESSED / processed_filename(currency, frequency)
-
-                binance_data = pd.read_parquet(filepath)
-                binance_data["timestamp"] = pd.to_datetime(binance_data["timestamp"], utc=True)
+                # Load the analysis window, resampled to the simulation frequency
+                binance_data = load_data(currency, freq=frequency)
 
                 results = {}
 
@@ -806,9 +801,8 @@ else:
 
             except FileNotFoundError:
                 st.error(
-                    f"Pre-processed data not found for {currency.upper()} at {frequency} frequency.\n\n"
-                    f"Available frequencies: Tick, 15s, 30s, 1min\n\n"
-                    f"Please run `python utils/data_io.py` to prepare the data."
+                    f"Data not found for {currency.upper()}: neither the tick parquet nor the raw files exist.\n\n"
+                    f"Build the tick data with `uv run python -m utils.data_io`."
                 )
             except Exception as e:  # noqa: BLE001
                 st.error(f"Error running simulation: {e!s}")
