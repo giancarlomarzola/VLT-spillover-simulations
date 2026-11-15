@@ -46,14 +46,15 @@ def run_simulation(
     The products and the orderbook are reset at the start, so the same objects can be reused
     across runs. They are left in their end-of-simulation state.
 
-    Slippage and the price multiplier follow the one-period execution lag of eqn 5: a
+    Slippage and the cumulative impact factor m_t follow the one-period execution lag of eqn 5: a
     rebalance at t only moves the price used at t+1.
 
     Returns a DataFrame on the same index as `prices` with:
         raw_price: the input price path, untouched.
         simulated_price: raw_price * price_multiplier, i.e. the price including the
             cumulative impact of the products' rebalancing.
-        price_multiplier, orderbook_effect (slippage of this step's net trade),
+        price_multiplier: the cumulative impact factor m_t (product of 1 + slippage so far).
+        orderbook_effect (slippage of this step's net trade),
         target_total_delta, actual_total_delta, depth_bid, depth_ask.
         <variable>_<product name> for each product and each variable in PRODUCT_VARS,
             e.g. nav_BTCUP, leverage_after_BTCUP.
@@ -108,7 +109,7 @@ def run_simulation(
     m_lag = 1.0  # m_{t-2}, needed for the eqn 5 lag
 
     for t in range(1, len(price)):
-        # Return of the impacted price. Guard against zero/corrupted prices or multipliers
+        # Return of the impacted price. Guard against zero/corrupted prices or impact factors
         if price[t - 1] == 0 or price[t] == 0 or m_lag == 0 or m_prev == 0:
             ret = 0.0
         else:
@@ -131,7 +132,7 @@ def run_simulation(
         for product in vletps:
             actual_total += product.execute_rebalance(scale)
 
-        # Clamp to keep the multiplier positive (a non-positive one would give NaN/inf next step)
+        # Clamp to keep the cumulative impact factor positive (a non-positive one would give NaN/inf next step)
         multiplier = max((1 + slippage) * m_prev, 1e-10)
 
         record(multiplier, slippage, target_total, actual_total)  # depth after this step's trade, before replenishment
@@ -188,7 +189,7 @@ def summarise_run(result: pd.DataFrame, vletps: VLETP | list[VLETP]) -> dict:
     no rebalances to average over are NaN.
 
     Price deviation is the cumulative effect of all rebalances on the price so far
-    (price_multiplier - 1), as a decimal.
+    (cumulative impact factor - 1, i.e. price_multiplier - 1), as a decimal.
 
     Realised volatility is the annualised standard deviation of log returns.
 
@@ -268,15 +269,15 @@ FEEDBACK_LOOP_MULTIPLIER = 10
 def flag_feedback_loops(runs: pd.DataFrame) -> pd.DataFrame:
     """
     Flag the runs where a fatal feedback loop took hold: rebalances moved the price, the
-    price move forced more rebalances in the same direction, and so on until the price
-    multiplier ran away and at least one product was wiped out.
+    price move forced more rebalances in the same direction, and so on until the
+    cumulative impact factor ran away and at least one product was wiped out.
 
     runs: summarise_run outputs, one row per run (e.g. the saved per-seed files concatenated).
 
     Returns a DataFrame on the same index with:
         feedback_loop: True for a fatal feedback loop.
-        feedback_loop_up / feedback_loop_down: the direction of the loop (price
-            multiplier above FEEDBACK_LOOP_MULTIPLIER, or below 1 / FEEDBACK_LOOP_MULTIPLIER).
+        feedback_loop_up / feedback_loop_down: the direction of the loop (cumulative
+            impact factor above FEEDBACK_LOOP_MULTIPLIER, or below 1 / FEEDBACK_LOOP_MULTIPLIER).
     """
     max_multiplier = 1 + runs["max_price_deviation"].astype(float)
     min_multiplier = 1 + runs["min_price_deviation"].astype(float)
