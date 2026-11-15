@@ -176,7 +176,10 @@ if not paths:
     raise FileNotFoundError(f"No saved iterations in {results_dir}; run run_btc_bootstrap_experiment.py first")
 runs = pd.concat([pd.read_parquet(path) for path in paths], ignore_index=True)
 runs["active"] = runs["n_rebalances"] > 0  # paths with at least one reset
-runs["abs_final"] = runs["final_price_deviation"].abs()
+# Largest spillover |m_t - 1| anywhere on a path, up or down
+runs["max_abs_spillover"] = pd.concat(
+    [runs["max_price_deviation"], -runs["min_price_deviation"]], axis=1
+).max(axis=1)
 # Largest single-trade impact on a path, buy or sell (NaN on paths without resets)
 runs["max_abs_impact"] = pd.concat(
     [runs["max_positive_impact"], -runs["max_negative_impact"]], axis=1
@@ -199,8 +202,7 @@ table = clean.groupby("orderbook", sort=False).agg(
     trade_k=("avg_rebalance_size", lambda s: s.mean() / 1e3),
     mean_abs_bps=("avg_abs_impact", lambda s: s.mean() * 1e4),
     max_abs_bps=("max_abs_impact", lambda s: s.mean() * 1e4),
-    final_bps=("final_price_deviation", lambda s: s.mean() * 1e4),
-    max_abs_final_pct=("abs_final", lambda s: s.max() * 1e2),
+    max_spillover_pct=("max_abs_spillover", lambda s: s.max() * 1e2),
 )
 table["loops"] = runs.groupby("orderbook", sort=False)["loop"].sum()
 print(f"\nSummary table:\n{table.round(3)}")
@@ -219,17 +221,15 @@ summary_rows = {  # row label in the deck, for the books in the order shown
 highlighted_rows = set()  # books whose row is wrapped in \red{}, e.g. {"spread 2x"}
 summary_columns = {  # column -> number format
     "resets": "{:.1f}", "trade_k": "{:,.0f}", "mean_abs_bps": "{:.2f}", "max_abs_bps": "{:.2f}",
-    "final_bps": "{:.1f}", "max_abs_final_pct": "{:.2f}",
+    "max_spillover_pct": "{:.2f}",
 }
 summary_lines = [
-    # Plain tabular (not tabular* at \textwidth), so the deck's \resizebox can shrink it to fit
-    r"\begin{tabular}{@{}lrrrrrr@{}}",
+    # Plain tabular at its natural width (not tabular* at \textwidth); the deck sets the font size
+    r"\begin{tabular}{@{}lccccc@{}}",
     r"    \toprule",
-    r"    & & \textbf{Trade} & \multicolumn{2}{c}{\textbf{Impact (bps)}}"
-    r" & \multicolumn{2}{c}{\textbf{Final spillover}}\\",
-    r"    \cmidrule(lr){4-5}\cmidrule(lr){6-7}",
-    r"    \textbf{Order book} & \textbf{Resets} & (\$k) & Mean $|\gamma_t|$ & Max $|\gamma_t|$"
-    r" & Mean (bps) & Max abs.\ (\%)\\",
+    r"    \textbf{Order book} & \textbf{Resets} & Mean $|q_t|$ & Mean $|\gamma_t|$"
+    r" & Max $|\gamma_t|$ & Max $|m_t-1|$\\",
+    r"    & & (\$k) & (bps) & (bps) & (\%)\\",  # units, in their own row
     r"    \midrule",
 ]
 for book, label in summary_rows.items():
