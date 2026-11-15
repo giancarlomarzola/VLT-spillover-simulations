@@ -115,7 +115,8 @@ Pick a currency, frequency and rebalancing rule (leverage band, boundary or targ
 - `simulations/orderbook_archetypes.py`: plot the slippage curves of a set of orderbook archetypes (deep/shallow, narrow/wide, tight/broad).
 - `simulations/plot_full_btc_data.py`: plot the full 2021-05-19 BTC data (price, UP/DOWN token prices, leverage) for visual inspection.
 - `legacy_scripts/price_shock_analysis.py`: statistics and plots of the return distribution for a currency and frequency.
-- `simulations/quant_minds_plots.py`: figures and tables for the QuantMinds presentation, from the GBM experiment `1s_2kappas`.
+- `simulations/quant_minds_plots_btc.py`: figures and tables for the QuantMinds presentation, from the BTC bootstrap experiment `100ms_4h_block1s`.
+- `simulations/quant_minds_plots_gbm.py`: GBM single-path price figure for the QuantMinds presentation, from the GBM experiment `1s_2kappas`.
 
 ### Plotting
 
