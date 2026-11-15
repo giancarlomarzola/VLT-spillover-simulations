@@ -51,6 +51,7 @@ for orderbook in orderbooks_list:
         baseline=baseline_orderbook,  # dotted outline; skipped on the baseline's own plot
         title="",
         )
+    fig.axes[0].set_xlabel("Price distance from mid-quote (%)", fontsize=12)
     if save_plots:
         file_name = orderbook.name.replace(".", "_")  # graphicx misreads extra dots in a file name
         fig.savefig(output_dir / f"orderbook_{file_name}.png", dpi=300, bbox_inches="tight")
