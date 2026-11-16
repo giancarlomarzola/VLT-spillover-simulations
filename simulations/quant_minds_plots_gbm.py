@@ -3,7 +3,6 @@ GBM figures for the QuantMinds presentation (Experiment 2), in the same style as
 simulations/quant_minds_plots_btc.py. The deck shows two books only, the baseline and depth 0.5x, against
 the no-impact reference, and compares them across volatilities. Saved to data/outputs/figures/quant_minds/:
     gbm_resets_by_vol.png: share of paths with a reset, and resets per path with a reset, by volatility.
-    gbm_spillover_by_vol.png: final spillover on paths with a reset, and its mean over all paths, by volatility.
     summary_table_gbm_by_vol.tex: the deck's Experiment 2 summary table, one block of rows per volatility.
     gbm_seed<seed>_vol<vol>_price.png: input price and simulated prices, and cumulative spillover.
 
@@ -70,26 +69,24 @@ active = runs[runs["active"]]
 
 # ---------- summary table, by volatility ----------
 # Statistics on the paths with a reset: trade size and impact are NaN on the others, and averaging
-# resets or spillover over paths that never trade only measures how rare resets are (left panels).
+# resets or spillover over paths that never trade only measures how rare resets are (left panel).
 table = active.groupby(["vol", "orderbook"], sort=False).agg(
     resets=("n_rebalances", "mean"),
     trade_k=("avg_rebalance_size", lambda s: s.mean() / 1e3),
     mean_abs_bps=("avg_abs_impact", lambda s: s.mean() * 1e4),
-    final_bps=("final_price_deviation", lambda s: s.mean() * 1e4),
     max_spillover_pct=("max_abs_spillover", lambda s: s.max() * 1e2),
 )
 print(f"\nSummary table (paths with a reset):\n{table.round(3)}")
 summary_columns = {  # column -> number format
-    "resets": "{:.1f}", "trade_k": "{:,.0f}", "mean_abs_bps": "{:.2f}", "final_bps": "{:.1f}",
-    "max_spillover_pct": "{:.2f}",
+    "resets": "{:.1f}", "trade_k": "{:,.0f}", "mean_abs_bps": "{:.2f}", "max_spillover_pct": "{:.2f}",
 }
 summary_lines = [
     # Plain tabular at its natural width (not tabular* at \textwidth); the deck sets the font size
-    r"\begin{tabular}{@{}llccccc@{}}",
+    r"\begin{tabular}{@{}llcccc@{}}",
     r"    \toprule",
     r"    $\sigma$ & \textbf{Order book} & \textbf{Resets} & Mean $|q_t|$ & Mean $|\gamma_t|$"
-    r" & Mean $m_t-1$ & Max $|m_t-1|$\\",
-    r"    & & & (\$k) & (bps) & (bps) & (\%)\\",  # units, in their own row
+    r" & Max $|m_t-1|$\\",
+    r"    & & & (\$k) & (bps) & (\%)\\",  # units, in their own row
 ]
 for vol in reset_vols:
     summary_lines.append(r"    \midrule")
@@ -148,54 +145,6 @@ with plt.rc_context(output_style):
     else:
         fig.show()
 
-# ---------- spillover by volatility and order book ----------
-rng = np.random.default_rng(0)  # jitter of the points only
-with plt.rc_context(output_style):
-    fig, axes = plt.subplots(1, 2, figsize=(11.8, 4.4), gridspec_kw={"width_ratios": [1.15, 1]})
-    ax = axes[0]
-    x = np.arange(len(reset_vols))
-    offset = 0.2
-    for i, book in enumerate(impact_books):
-        label, color, marker = books[book]
-        for xi, vol in zip(x, reset_vols):
-            values = active.loc[(active["vol"] == vol) & (active["orderbook"] == book), "final_price_deviation"] * 1e4
-            pos = xi + (2 * i - 1) * offset
-            if len(values) >= 10:  # a box needs enough paths; the points are shown either way
-                ax.boxplot(values, positions=[pos], widths=0.3, showfliers=False, whis=(5, 95), zorder=2,
-                           medianprops=dict(color=color, lw=2), boxprops=dict(color=color, lw=1.4),
-                           whiskerprops=dict(color=color, lw=1.4), capprops=dict(color=color, lw=1.4))
-            ax.scatter(pos + rng.uniform(-0.09, 0.09, len(values)), values, s=10, color=color, alpha=0.45,
-                       marker=marker, lw=0, zorder=3, label=label if xi == 0 else None)
-    ax.axhline(0, color=BLACK, lw=0.8, zorder=1)
-    ax.set_xticks(x, vol_ticklabels(reset_vols))
-    ax.set_xlim(-0.6, len(reset_vols) - 0.4)
-    ax.set_title("Final spillover on paths with a reset", fontsize=15)
-    ax.set_ylabel(r"$m_t-1$ (bps)")
-    ax.set_xlabel("Annualised GBM volatility")
-    ax.grid(axis="x", visible=False)
-    ax.legend(fontsize=12, loc="upper left", markerscale=2.5)
-
-    # Mean over all 1,000 paths, with a 95% confidence interval (normal approximation, 1.96 * sd / sqrt(n))
-    ax = axes[1]
-    for dodge, book in zip([-1.2, 1.2], impact_books):  # vol-% shift per book, so the bars do not overlap
-        label, color, marker = books[book]
-        final = runs[runs["orderbook"] == book].groupby("vol")["final_price_deviation"]
-        mean, ci = final.mean() * 1e4, 1.96 * final.std() / np.sqrt(final.count()) * 1e4
-        ax.errorbar(mean.index + dodge, mean, yerr=ci, color=color, marker=marker, ms=7, lw=2, elinewidth=1.2,
-                    capsize=4, label=label)
-    ax.set_xticks(vols, [f"{vol}%" for vol in vols])
-    ax.set_title("Mean final spillover over all paths", fontsize=15)
-    ax.set_ylabel(r"Mean $m_t-1$ (bps)")
-    ax.set_xlabel("Annualised GBM volatility")
-    ax.legend(fontsize=12, loc="upper left")
-    fig.tight_layout()
-    if save_plots:
-        fig.savefig(output_dir / "gbm_spillover_by_vol.png", dpi=300, bbox_inches="tight")
-    else:
-        fig.show()
-print("\nMean final spillover over all paths (bps):")
-print((runs.groupby(["vol", "orderbook"])["final_price_deviation"].mean().unstack() * 1e4).round(2))
-
 # ---------- one path, re-simulated in full ----------
 single_path_books = impact_books
 setup = load_setup(experiment_dir)  # the setup the saved results were run with
@@ -231,7 +180,7 @@ with plt.rc_context(output_style):
         price = base["raw_price"] if book == "no_orderbook" else res[book]["simulated_price"]
         ax.plot(hours[::step], price.iloc[::step], color=color, lw=lw, label=label, zorder=zorder)
     ax.set_title("Input price and simulated price", fontsize=15)
-    ax.set_ylabel("Price")
+    ax.set_ylabel(r"Price (\$)")
     ax.legend(fontsize=12, loc="best")
     ax = axes[1]
     for book, label, color, lw, zorder in path_styles[1:]:  # spillover is zero for the input price

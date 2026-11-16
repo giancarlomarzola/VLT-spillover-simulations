@@ -37,7 +37,7 @@ if save_plots:
 # slides instead of plotted. The ask side shows the full book; the bid side is drawn after a sale has
 # used up part of its depth, to illustrate resilience.
 baseline_orderbook = next(ob for ob in btc_orderbooks() if ob is not None and ob.name == "baseline")
-d = baseline_orderbook.depth_ask_full / 1e6  # US$m
+d = baseline_orderbook.depth_ask_full / 1e6  # $m
 w = baseline_orderbook.width_ask * 100  # %
 c = baseline_orderbook.spread_ask * 100  # %
 baseline_kappa = baseline_orderbook.k_ask
@@ -47,6 +47,7 @@ d_left = (1 - consumed) * d
 
 ob_bid_col, ob_ask_col = (153 / 255, 0, 0), (20 / 255, 45 / 255, 80 / 255)
 highlight_col = "#990000"  # the deck's red, for the parameter a scenario changes
+half_life_col = "#5B5F63"  # neutral dark gray, for the half-life label and its arrow
 
 
 def cumulative_depth(z, depth, kappa):
@@ -86,7 +87,7 @@ def plot_orderbook_illustration(kappa, file_name):
 
         # Depth d: from zero to the plateau of the ask side
         ax.annotate("", xy=(2.1, 0), xytext=(2.1, d), arrowprops=arrow | {"color": "white"})
-        ax.text(2.02, d / 2 + 6, f"Depth $d$\n= US\\${d:.0f}m", color="white", fontsize=fs, ha="right", va="center")
+        ax.text(2.02, d / 2 + 6, f"Depth $d$\n= \\${d:.0f}m", color="white", fontsize=fs, ha="right", va="center")
 
         # Half-width w: from the mid-quote to the last quote, on the bid side (clear of the shape label)
         ax.annotate("", xy=(0, d + 4), xytext=(-w, d + 4), arrowprops=arrow)
@@ -105,16 +106,18 @@ def plot_orderbook_illustration(kappa, file_name):
         ax.text(z_mark - 0.12, 65, f"Shape $\\kappa = {kappa:g}$", fontsize=fs, ha="left", va="bottom",
                 color=highlight_col if changed else "black", weight="bold" if changed else "normal")
 
-        # Half-life h: the consumed bid depth refills
-        ax.annotate("", xy=(-1.6, d - 0.5), xytext=(-1.6, d_left + 0.5),
-                    arrowprops=dict(arrowstyle="->", color="black", lw=1.8))
+        # Half-life h: the consumed bid depth refills. Label and arrow share a colour to tie them
+        # together; the arrow is a little heavier than the other annotation arrows so it stands out
+        ax.annotate("", xy=(-1.6, d), xytext=(-1.6, d_left),
+                    arrowprops=dict(arrowstyle="-|>,head_width=0.4,head_length=0.8", mutation_scale=22,
+                                    color=half_life_col, lw=5, shrinkA=0, shrinkB=0), zorder=6)
         ax.text(-2.15, d + 17, f"Consumed depth refills:\nhalf-life $h$ = {half_life_min:.0f} min",
-                fontsize=fs, ha="left", va="bottom")
+                fontsize=fs, ha="left", va="bottom", color=half_life_col)
 
         ax.set_xlim(-x_max, x_max)
         ax.set_ylim(0, y_max)
         ax.set_xlabel("Price distance from mid-quote, $z$ (%)", fontsize=fs)
-        ax.set_ylabel("Cumulative depth (US\\$m)", fontsize=fs)
+        ax.set_ylabel("Cumulative depth (\\$m)", fontsize=fs)
         ax.tick_params(labelsize=fs - 2)
         ax.set_yticks(range(0, 61, 10))
         ax.spines[["top", "right"]].set_visible(False)
@@ -285,7 +288,7 @@ with plt.rc_context(output_style):
         price = base["raw_price"] if book == "no_orderbook" else res[book]["simulated_price"]
         ax.plot(hours[::step], price.iloc[::step], color=color, lw=lw, label=label, zorder=zorder)
     ax.set_title("Input price and simulated price", fontsize=15)
-    ax.set_ylabel("BTC price (US\\$)")
+    ax.set_ylabel("BTC price (\\$)")
     ax.legend(fontsize=12, loc="best")
     ax = axes[1]
     for book, label, color, lw, zorder in path_styles[1:]:  # spillover is zero for the input price
@@ -338,10 +341,10 @@ with plt.rc_context(output_style):
         ax.set_title(name, fontsize=15)
         ax.set_xlabel("Time elapsed (hours)")
         ax.set_xticks(hour_ticks)
-        print(f"{name} final NAV (US$m): " + ", ".join(
+        print(f"{name} final NAV ($m): " + ", ".join(
             f"{book} {res[book][f'nav_{product.name}'].iloc[-1] / 1e6:.2f}"
             for book in ["no_orderbook"] + single_path_books))
-    axes[0].set_ylabel(r"NAV (US\$m)")
+    axes[0].set_ylabel(r"NAV (\$m)")
     axes[0].legend(fontsize=12, loc="best")
     fig.tight_layout()
     if save_plots:
